@@ -541,42 +541,32 @@ export default function TripMap({
       }
     });
 
-    // Add Directional Arrow Markers — point toward user's live GPS when available,
-    // otherwise fall back to the stop-to-stop route direction
+    // Add Directional Arrow Markers along route segments (pointing stop-to-stop)
     for (let i = 0; i < validCoords.length - 1; i++) {
       const p1 = validCoords[i];
       const p2 = validCoords[i + 1];
       const midLng = (p1[0] + p2[0]) / 2;
       const midLat = (p1[1] + p2[1]) / 2;
 
-      // When user's live location is available, arrows point from the midpoint toward the user
-      const heading = userCoords
-        ? calculateBearing(midLng, midLat, userCoords[0], userCoords[1])
-        : calculateBearing(p1[0], p1[1], p2[0], p2[1]);
-
-      const hasLiveTarget = !!userCoords;
-      const arrowColor = hasLiveTarget ? "#34d399" : "#dfb26c"; // emerald when pointing at user
-      const borderColor = hasLiveTarget ? "#10b981" : "#dfb26c";
+      const heading = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
 
       const arrowEl = document.createElement("div");
       arrowEl.className = "flex items-center justify-center pointer-events-none";
       arrowEl.style.cssText = `
-        background: rgba(18, 18, 20, 0.95);
-        color: ${arrowColor};
-        width: 26px;
-        height: 26px;
+        background: rgba(18, 18, 20, 0.7);
+        color: rgba(223, 178, 108, 0.75);
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
-        border: 1.5px solid ${borderColor};
-        box-shadow: 0 4px 14px ${hasLiveTarget ? "rgba(16,185,129,0.5)" : "rgba(0,0,0,0.7)"};
+        border: 1px solid rgba(223, 178, 108, 0.3);
         display: flex;
         align-items: center;
         justify-content: center;
         transform: rotate(${heading}deg);
-        transition: transform 0.4s ease, color 0.3s ease, border-color 0.3s ease;
-        z-index: 5;
+        z-index: 2;
       `;
       arrowEl.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 14px; height: 14px;">
+        <svg viewBox="0 0 24 24" fill="currentColor" style="width: 10px; height: 10px;">
           <polygon points="12,2 2,22 12,18 22,22" />
         </svg>
       `;
@@ -602,13 +592,16 @@ export default function TripMap({
           },
         });
       }
-      fetchDirections(validCoords, navMode);
+      const initialPos = userCoords || userInitialCoords;
+      const routePoints = initialPos ? [initialPos, ...validCoords] : validCoords;
+      fetchDirections(routePoints, navMode);
 
       // Fit bounds cleanly
       const bounds = validCoords.reduce(
         (b, coord) => b.extend(coord),
         new maplibregl.LngLatBounds(validCoords[0], validCoords[0])
       );
+      if (initialPos) bounds.extend(initialPos);
       map.fitBounds(bounds, { padding: 70, maxZoom: 14 });
     } else {
       const source = map.getSource("route-line") as maplibregl.GeoJSONSource;
@@ -621,149 +614,80 @@ export default function TripMap({
       }
       setDirections(null);
     }
-  }, [places.length, members.length, mapLoaded, navMode, activePoiCategory, JSON.stringify(validCoords), userCoords?.[0], userCoords?.[1]]);
+  }, [places.length, members.length, mapLoaded, navMode, activePoiCategory, JSON.stringify(validCoords)]);
 
-  // 3. GEOLOCATION WATCH POSITION WHEN LIVE NAV IS ACTIVE
-  // Seed initial coords from prop if available (avoids waiting for first watchPosition event)
+  // 3. USER LIVE LOCATION NAVIGATION ARROW MARKER — ALWAYS RENDERED ON USER LIVE GPS
   useEffect(() => {
-    if (isLiveNav && userInitialCoords && !userCoords) {
+    if (userInitialCoords && !userCoords) {
       setUserCoords(userInitialCoords);
     }
-  }, [isLiveNav, userInitialCoords]);
+  }, [userInitialCoords]);
 
   useEffect(() => {
-    if (!isLiveNav) {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+    if (!mapLoaded || !mapRef.current) return;
+
+    const map = mapRef.current;
+
+    const updateOrCreateUserMarker = (currentPos: [number, number]) => {
+      const nextTarget = validCoords[0] || currentPos;
+      const userHeading = calculateBearing(currentPos[0], currentPos[1], nextTarget[0], nextTarget[1]);
+
+      if (!userMarkerRef.current) {
+        const userEl = document.createElement("div");
+        userEl.id = "user-nav-arrow-wrapper";
+        userEl.className = "relative flex items-center justify-center cursor-pointer z-40";
+        userEl.title = "Your Live GPS Location";
+        userEl.innerHTML = `
+          <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
+          <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${userHeading}deg); transition: transform 0.3s ease;">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
+              <polygon points="12,2 2,22 12,18 22,22" />
+            </svg>
+          </div>
+          <div class="absolute -bottom-5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-black/90 text-[9px] text-[var(--gold)] font-extrabold whitespace-nowrap border border-[var(--gold)]/40 pointer-events-none shadow-lg">
+            Your Location
+          </div>
+        `;
+
+        userMarkerRef.current = new maplibregl.Marker({ element: userEl })
+          .setLngLat(currentPos)
+          .addTo(map);
+      } else {
+        userMarkerRef.current.setLngLat(currentPos);
+        const arrowEl = document.querySelector("#user-nav-arrow-wrapper .user-arrow-cone") as HTMLElement;
+        if (arrowEl) {
+          arrowEl.style.transform = `rotate(${userHeading}deg)`;
+        }
       }
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
-      return;
+    };
+
+    // Render immediately if initial coords or userCoords exist
+    const activePos = userCoords || userInitialCoords;
+    if (activePos) {
+      updateOrCreateUserMarker(activePos);
     }
 
     if (!navigator.geolocation) {
       setGeoError("Geolocation is not supported by your browser.");
-      if (userInitialCoords) {
-        const currentPos = userInitialCoords;
-        setUserCoords(currentPos);
-        const map = mapRef.current;
-        if (map && mapLoaded && !userMarkerRef.current) {
-          const userEl = document.createElement("div");
-          userEl.id = "user-nav-arrow-wrapper";
-          userEl.className = "relative flex items-center justify-center cursor-pointer";
-          const nextTarget = validCoords[0] || currentPos;
-          const heading = calculateBearing(currentPos[0], currentPos[1], nextTarget[0], nextTarget[1]);
-          userEl.innerHTML = `
-            <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
-            <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
-              <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
-                <polygon points="12,2 2,22 12,18 22,22" />
-              </svg>
-            </div>
-          `;
-          userMarkerRef.current = new maplibregl.Marker({ element: userEl })
-            .setLngLat(currentPos)
-            .addTo(map);
-          fetchDirections([currentPos, ...validCoords], navMode);
-        }
-      }
       return;
     }
 
     setGeoError(null);
 
-    // If we already have a seeded initial position, place marker immediately without overriding camera zoom
-    if (userInitialCoords && mapRef.current && mapLoaded && !userMarkerRef.current) {
-      const seedPos = userInitialCoords;
-      const map = mapRef.current;
-      const nextTarget = validCoords[0] || seedPos;
-      const heading = calculateBearing(seedPos[0], seedPos[1], nextTarget[0], nextTarget[1]);
-      const userEl = document.createElement("div");
-      userEl.id = "user-nav-arrow-wrapper";
-      userEl.className = "relative flex items-center justify-center cursor-pointer";
-      userEl.innerHTML = `
-        <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
-        <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
-          <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
-            <polygon points="12,2 2,22 12,18 22,22" />
-          </svg>
-        </div>
-      `;
-      userMarkerRef.current = new maplibregl.Marker({ element: userEl })
-        .setLngLat(seedPos)
-        .addTo(map);
-      fetchDirections([seedPos, ...validCoords], navMode);
-    }
-
     const handlePosition = (pos: GeolocationPosition) => {
       const { latitude, longitude } = pos.coords;
       const currentPos: [number, number] = [longitude, latitude];
       setUserCoords(currentPos);
+      updateOrCreateUserMarker(currentPos);
 
-      const map = mapRef.current;
-      if (map) {
-        const nextTarget = validCoords[0] || currentPos;
-        const userHeading = calculateBearing(currentPos[0], currentPos[1], nextTarget[0], nextTarget[1]);
-
-        if (!userMarkerRef.current) {
-          const userEl = document.createElement("div");
-          userEl.id = "user-nav-arrow-wrapper";
-          userEl.className = "relative flex items-center justify-center cursor-pointer";
-          userEl.innerHTML = `
-            <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
-            <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${userHeading}deg); transition: transform 0.3s ease;">
-              <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
-                <polygon points="12,2 2,22 12,18 22,22" />
-              </svg>
-            </div>
-          `;
-
-          userMarkerRef.current = new maplibregl.Marker({ element: userEl })
-            .setLngLat(currentPos)
-            .addTo(map);
-        } else {
-          userMarkerRef.current.setLngLat(currentPos);
-          const arrowEl = document.querySelector("#user-nav-arrow-wrapper .user-arrow-cone") as HTMLElement;
-          if (arrowEl) {
-            arrowEl.style.transform = `rotate(${userHeading}deg)`;
-          }
-        }
-
-        // Route from current GPS position to all stops
-        const routeCoords = [currentPos, ...validCoords];
-        fetchDirections(routeCoords, navMode);
-      }
-
+      // Route from current GPS position to all stops
+      const routeCoords = [currentPos, ...validCoords];
+      fetchDirections(routeCoords, navMode);
     };
 
     const handleError = (err: GeolocationPositionError) => {
       console.warn("Geolocation error:", err.message);
-      setGeoError("Could not lock GPS position. Using route from nearest stop.");
-      if (userInitialCoords && mapRef.current && !userMarkerRef.current) {
-        const fallbackPos = userInitialCoords;
-        setUserCoords(fallbackPos);
-        const map = mapRef.current;
-        const nextTarget = validCoords[0] || fallbackPos;
-        const heading = calculateBearing(fallbackPos[0], fallbackPos[1], nextTarget[0], nextTarget[1]);
-        const userEl = document.createElement("div");
-        userEl.id = "user-nav-arrow-wrapper";
-        userEl.className = "relative flex items-center justify-center cursor-pointer";
-        userEl.innerHTML = `
-          <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
-          <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
-            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
-              <polygon points="12,2 2,22 12,18 22,22" />
-            </svg>
-          </div>
-        `;
-        userMarkerRef.current = new maplibregl.Marker({ element: userEl })
-          .setLngLat(fallbackPos)
-          .addTo(map);
-        fetchDirections([fallbackPos, ...validCoords], navMode);
-      }
+      setGeoError("Could not lock GPS position.");
     };
 
     watchIdRef.current = navigator.geolocation.watchPosition(handlePosition, handleError, {
@@ -778,7 +702,7 @@ export default function TripMap({
         watchIdRef.current = null;
       }
     };
-  }, [isLiveNav, navMode]);
+  }, [mapLoaded, userInitialCoords?.[0], userInitialCoords?.[1], userCoords?.[0], userCoords?.[1], JSON.stringify(validCoords), navMode]);
 
   const recenterUser = () => {
     if (mapRef.current && userCoords) {

@@ -147,7 +147,19 @@ export async function POST(req: Request) {
     }
 
     // 4. Generate AI itinerary
-    const calculatedDaysCount = tripRecord ? Math.max(1, Math.min(14, Math.ceil((new Date(tripRecord.endDate).getTime() - new Date(tripRecord.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)) : daysCount;
+    let calculatedDaysCount = Number(daysCount) || 3;
+    if (tripRecord && tripRecord.startDate && tripRecord.endDate) {
+      try {
+        const startMs = new Date(tripRecord.startDate).getTime();
+        const endMs = new Date(tripRecord.endDate).getTime();
+        if (!isNaN(startMs) && !isNaN(endMs)) {
+          const diffDays = Math.ceil(Math.abs(endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+          if (!isNaN(diffDays) && diffDays > 0) {
+            calculatedDaysCount = Math.max(1, Math.min(14, diffDays));
+          }
+        }
+      } catch {}
+    }
 
     let itineraryDays = await generateItineraryWithGemini(
       targetDestination,
@@ -258,9 +270,31 @@ export async function POST(req: Request) {
         for (const dayObj of itineraryDays) {
           let sortOrder = 1;
           for (const s of dayObj.stops) {
+            // Ensure place exists in place table to satisfy foreign key requirement
+            const placeId = s.placeId || `place-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            const existingPlace = await db.select().from(place).where(eq(place.id, placeId));
+            if (existingPlace.length === 0) {
+              await db
+                .insert(place)
+                .values({
+                  id: placeId,
+                  destination: targetDestination,
+                  name: s.placeName || (s as any).name || placeId,
+                  category: (s as any).category || "attraction",
+                  latitude: "15.2993",
+                  longitude: "74.1240",
+                  openingHours: (s as any).openingHours || "09:00 - 21:00",
+                  hoursConfidence: "AI Generated",
+                  description: s.notes || "AI Recommended Place",
+                  popularityScore: 85,
+                  verified: false,
+                })
+                .onConflictDoNothing();
+            }
+
             await db.insert(stop).values({
               itineraryId: itinId,
-              placeId: s.placeId,
+              placeId,
               dayIndex: dayObj.dayIndex,
               startTime: s.startTime,
               endTime: s.endTime,

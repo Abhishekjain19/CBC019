@@ -1852,8 +1852,36 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                     const isLast = index === currentDayStops.length - 1;
                     const nextStop = !isLast ? currentDayStops[index + 1] : null;
 
-                    const effectiveActiveStopId = activeNavStopId || (displayedStops.length > 0 ? displayedStops[0].id : null);
-                    const isCurrentlyVisiting = stopItem.id === effectiveActiveStopId;
+                    const isNavigatingOnMap = activeNavStopId === stopItem.id;
+
+                    const isMatchDateTime = (() => {
+                      const now = new Date();
+                      const currentHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+                      if (trip?.startDate) {
+                        try {
+                          const stopDate = new Date(trip.startDate);
+                          stopDate.setDate(stopDate.getDate() + (stopItem.dayIndex - 1));
+
+                          const isSameDate =
+                            now.getFullYear() === stopDate.getFullYear() &&
+                            now.getMonth() === stopDate.getMonth() &&
+                            now.getDate() === stopDate.getDate();
+
+                          if (isSameDate && stopItem.startTime && stopItem.endTime) {
+                            return currentHHMM >= stopItem.startTime && currentHHMM <= stopItem.endTime;
+                          }
+                        } catch {}
+                      } else {
+                        if (stopItem.startTime && stopItem.endTime) {
+                          return currentHHMM >= stopItem.startTime && currentHHMM <= stopItem.endTime;
+                        }
+                      }
+
+                      return false;
+                    })();
+
+                    const isCurrentlyVisiting = isNavigatingOnMap || (isMatchDateTime && (trip?.status === "live" || activeNavStopId !== null));
 
                     return (
                       <div key={stopItem.id} className="relative">
@@ -1883,13 +1911,25 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                                   {stopItem.category || "attraction"}
                                 </span>
 
-                                {!isCurrentlyVisiting && (
+                                {isNavigatingOnMap && (
+                                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium flex items-center gap-1 border border-emerald-500/40">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span>Live Map Navigating</span>
+                                  </span>
+                                )}
+
+                                {isMatchDateTime && !isCurrentlyVisiting && (
                                   <button
                                     type="button"
-                                    onClick={() => setActiveNavStopId(stopItem.id)}
-                                    className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--gold)]/10 text-[var(--gold)] hover:bg-[var(--gold)]/20 transition font-medium"
+                                    onClick={() => {
+                                      handleUpdateTripStatus("live");
+                                      setActiveNavStopId(stopItem.id);
+                                    }}
+                                    className="text-[11px] px-3 py-1 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition flex items-center gap-1.5 shadow-sm animate-pulse"
+                                    title="Click to start live trip for this scheduled slot"
                                   >
-                                    Mark Navigating
+                                    <Play className="w-3 h-3 fill-current" />
+                                    <span>Start Trip</span>
                                   </button>
                                 )}
                               </div>
