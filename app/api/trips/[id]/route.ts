@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { trip, tripMember, itinerary, stop, place, expense, profile } from "@/db/schema";
+import { trip, tripMember, itinerary, stop, place, expense, profile, userAuth } from "@/db/schema";
 import { eq, or, desc } from "drizzle-orm";
 import { getSessionUser } from "@/lib/auth";
 import { resolveTripRecord } from "@/lib/trips-db";
@@ -119,21 +119,49 @@ export async function GET(
       .from(tripMember)
       .where(eq(tripMember.tripId, tripRecord.id));
 
+    const allAuthUsers = await db
+      .select({ id: userAuth.id, displayName: userAuth.displayName, email: userAuth.email })
+      .from(userAuth)
+      .catch(() => []);
+    const authMap = new Map(allAuthUsers.map((a) => [a.id, a]));
+
     const allProfiles = await db.select().from(profile).catch(() => []);
     const profileMap = new Map(allProfiles.map((p) => [p.userId, p.displayName]));
 
-    const mappedMembers = dbMembers.map((m) => ({
-      userId: m.userId,
-      displayName:
-        profileMap.get(m.userId) ||
-        (m.userId === tripRecord.ownerId
-          ? m.userId === user.userId
-            ? `${user.displayName} (Host)`
-            : "Trip Host"
-          : m.userId.replace("user-", "").replace(/^\w/, (c) => c.toUpperCase()) || "Traveller"),
-      email: `${m.userId.replace("user-", "")}@voyara.travel`,
-      role: m.role as "owner" | "member",
-    }));
+    let memberList = [...dbMembers];
+    if (!memberList.some((m) => m.userId === tripRecord.ownerId)) {
+      memberList.unshift({
+        tripId: tripRecord.id,
+        userId: tripRecord.ownerId,
+        role: "owner",
+        joinedAt: new Date(),
+        removedAt: null,
+      });
+    }
+
+    const mappedMembers = memberList.map((m) => {
+      const authUser = authMap.get(m.userId);
+      const profileName = profileMap.get(m.userId);
+      const isCurrentLogin = m.userId === user.userId;
+      const isOwner = m.userId === tripRecord.ownerId || m.role === "owner";
+
+      let displayName = authUser?.displayName || profileName;
+      if (!displayName && isCurrentLogin && user.displayName) {
+        displayName = user.displayName;
+      }
+      if (!displayName) {
+        displayName = isOwner ? "Trip Host" : "Co-Traveller";
+      }
+
+      const email = authUser?.email || (isCurrentLogin ? user.email : `${m.userId}@voyara.travel`);
+
+      return {
+        userId: m.userId,
+        displayName,
+        email,
+        role: (isOwner ? "owner" : "member") as "owner" | "member",
+      };
+    });
 
     // 5. Expenses from DB
     const dbExpenses = await db
