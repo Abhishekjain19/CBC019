@@ -6,6 +6,7 @@ export async function resolveTripRecord(idOrSlug: string, userId?: string) {
   if (!idOrSlug) return null;
 
   let foundTrip: any = null;
+  let matchedByCode = false;
 
   // 1. Direct ID match
   try {
@@ -17,7 +18,10 @@ export async function resolveTripRecord(idOrSlug: string, userId?: string) {
   if (!foundTrip) {
     try {
       const codeMatches = await db.select().from(trip).where(eq(trip.joinCode, idOrSlug.toUpperCase()));
-      if (codeMatches.length > 0) foundTrip = codeMatches[0];
+      if (codeMatches.length > 0) {
+        foundTrip = codeMatches[0];
+        matchedByCode = true;
+      }
     } catch {}
   }
 
@@ -34,10 +38,26 @@ export async function resolveTripRecord(idOrSlug: string, userId?: string) {
 
     if (memberMatch.length > 0) return foundTrip;
 
+    // If matched by valid join code, auto-enroll authenticated user as member
+    if (matchedByCode) {
+      try {
+        await db
+          .insert(tripMember)
+          .values({
+            tripId: foundTrip.id,
+            userId,
+            role: "member",
+          })
+          .onConflictDoNothing();
+        return foundTrip;
+      } catch {}
+    }
+
     // User is neither owner nor member
     return null;
   }
 
   return foundTrip;
 }
+
 

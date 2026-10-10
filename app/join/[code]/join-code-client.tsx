@@ -19,11 +19,15 @@ export default function JoinCodeClient({ code }: { code: string }) {
       const res = await fetch("/api/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: cleanCode, userId: "user-guest" }),
+        body: JSON.stringify({ code: cleanCode }),
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401 || data.requiresAuth) {
+          router.push(`/sign-in?redirect=/join/${cleanCode}`);
+          return;
+        }
         throw new Error(data.error || "Failed to join trip");
       }
 

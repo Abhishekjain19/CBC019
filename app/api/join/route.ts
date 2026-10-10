@@ -2,10 +2,19 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trip, tripMember } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getSessionUser } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const { code, userId = "user-joined" } = await req.json();
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Please sign in to join this trip.", requiresAuth: true },
+        { status: 401 }
+      );
+    }
+
+    const { code } = await req.json();
 
     if (!code || typeof code !== "string") {
       return NextResponse.json({ error: "Join code is required." }, { status: 400 });
@@ -25,15 +34,20 @@ export async function POST(req: Request) {
 
     const foundTrip = rows[0];
 
-    // Add to tripMember if not already there
-    try {
-      await db.insert(tripMember).values({
-        tripId: foundTrip.id,
-        userId,
-        role: "member",
-      }).onConflictDoNothing();
-    } catch {
-      // Already a member — no-op
+    // Add authenticated user to tripMember if not owner
+    if (foundTrip.ownerId !== user.userId) {
+      try {
+        await db
+          .insert(tripMember)
+          .values({
+            tripId: foundTrip.id,
+            userId: user.userId,
+            role: "member",
+          })
+          .onConflictDoNothing();
+      } catch (err) {
+        console.error("Error inserting trip member:", err);
+      }
     }
 
     return NextResponse.json({ success: true, tripId: foundTrip.id, trip: foundTrip });
@@ -41,3 +55,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Failed to process join code" }, { status: 500 });
   }
 }
+
