@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -126,8 +126,8 @@ export default function TripMap({
   const [selectedPoi, setSelectedPoi] = useState<PoiInfo | null>(null);
   const [activePoiCategory, setActivePoiCategory] = useState<"none" | "restaurant" | "hotel" | "store" | "medical" | "all">("none");
 
-  // Live Navigation State
-  const [isLiveNav, setIsLiveNav] = useState(true);
+  // Live Navigation State (off by default so itinerary scale is preserved)
+  const [isLiveNav, setIsLiveNav] = useState(false);
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [navMode, setNavMode] = useState<"driving" | "walking" | "cycling">("driving");
@@ -141,14 +141,32 @@ export default function TripMap({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
 
-  // Default coordinate centers
+  // Comprehensive destination coordinates mapping
   const defaultCenters: Record<string, [number, number]> = {
     Goa: [73.9116, 15.35],
     Coorg: [75.7381, 12.4225],
     Hampi: [76.4600, 15.3353],
+    Bengaluru: [77.5946, 12.9716],
+    Bangalore: [77.5946, 12.9716],
+    Mumbai: [72.8777, 19.0760],
+    Delhi: [77.2090, 28.6139],
+    "New Delhi": [77.2090, 28.6139],
+    Jaipur: [75.7873, 26.9124],
+    Kerala: [76.2711, 9.9312],
+    Kochi: [76.2711, 9.9312],
+    Udaipur: [73.7125, 24.5854],
+    Manali: [77.1887, 32.2432],
+    Shimla: [77.1734, 31.1048],
+    Ooty: [76.6957, 11.4102],
+    Munnar: [77.0595, 10.0889],
+    Pondicherry: [79.8083, 11.9416],
+    Puducherry: [79.8083, 11.9416],
+    Mysuru: [76.6394, 12.2958],
+    Mysore: [76.6394, 12.2958],
+    Agra: [78.0081, 27.1767],
+    Varanasi: [82.9739, 25.3176],
+    Rishikesh: [78.2676, 30.0869],
   };
-
-  const initialCenter = center || defaultCenters[destination] || [73.9116, 15.35];
 
   // Extract valid coordinates safely
   const validPlaces = places.filter((p) => {
@@ -161,6 +179,20 @@ export default function TripMap({
     parseFloat(String(p.longitude)),
     parseFloat(String(p.latitude)),
   ]);
+
+  // Compute centroid of itinerary places if available
+  const computedCentroid: [number, number] | null = useMemo(() => {
+    if (validCoords.length === 0) return null;
+    const sumLng = validCoords.reduce((sum, c) => sum + c[0], 0);
+    const sumLat = validCoords.reduce((sum, c) => sum + c[1], 0);
+    return [sumLng / validCoords.length, sumLat / validCoords.length];
+  }, [JSON.stringify(validCoords)]);
+
+  const matchedDestKey = destination
+    ? Object.keys(defaultCenters).find((k) => k.toLowerCase() === destination.trim().toLowerCase()) || destination
+    : "Goa";
+
+  const initialCenter = center || computedCentroid || defaultCenters[matchedDestKey] || defaultCenters["Goa"] || [73.9116, 15.35];
 
   // Fetch detailed directions from API
   const fetchDirections = useCallback(
@@ -597,7 +629,6 @@ export default function TripMap({
 
     if (!navigator.geolocation) {
       setGeoError("Geolocation is not supported by your browser.");
-      // If we have initial coords from prop, still place the user marker
       if (userInitialCoords) {
         const currentPos = userInitialCoords;
         setUserCoords(currentPos);
@@ -619,7 +650,6 @@ export default function TripMap({
           userMarkerRef.current = new maplibregl.Marker({ element: userEl })
             .setLngLat(currentPos)
             .addTo(map);
-          map.flyTo({ center: currentPos, zoom: 15, pitch: 45 });
           fetchDirections([currentPos, ...validCoords], navMode);
         }
       }
@@ -628,7 +658,7 @@ export default function TripMap({
 
     setGeoError(null);
 
-    // If we already have a seeded initial position, place marker immediately
+    // If we already have a seeded initial position, place marker immediately without overriding camera zoom
     if (userInitialCoords && mapRef.current && mapLoaded && !userMarkerRef.current) {
       const seedPos = userInitialCoords;
       const map = mapRef.current;
@@ -648,7 +678,6 @@ export default function TripMap({
       userMarkerRef.current = new maplibregl.Marker({ element: userEl })
         .setLngLat(seedPos)
         .addTo(map);
-      map.flyTo({ center: seedPos, zoom: 15, pitch: 45 });
       fetchDirections([seedPos, ...validCoords], navMode);
     }
 
@@ -678,8 +707,6 @@ export default function TripMap({
           userMarkerRef.current = new maplibregl.Marker({ element: userEl })
             .setLngLat(currentPos)
             .addTo(map);
-
-          map.flyTo({ center: currentPos, zoom: 15, pitch: 45 });
         } else {
           userMarkerRef.current.setLngLat(currentPos);
           const arrowEl = document.querySelector("#user-nav-arrow-wrapper .user-arrow-cone") as HTMLElement;
@@ -698,7 +725,6 @@ export default function TripMap({
     const handleError = (err: GeolocationPositionError) => {
       console.warn("Geolocation error:", err.message);
       setGeoError("Could not lock GPS position. Using route from nearest stop.");
-      // Fall back to initial coords if available
       if (userInitialCoords && mapRef.current && !userMarkerRef.current) {
         const fallbackPos = userInitialCoords;
         setUserCoords(fallbackPos);
@@ -719,7 +745,6 @@ export default function TripMap({
         userMarkerRef.current = new maplibregl.Marker({ element: userEl })
           .setLngLat(fallbackPos)
           .addTo(map);
-        map.flyTo({ center: fallbackPos, zoom: 15, pitch: 45 });
         fetchDirections([fallbackPos, ...validCoords], navMode);
       }
     };
@@ -740,9 +765,19 @@ export default function TripMap({
 
   const recenterUser = () => {
     if (mapRef.current && userCoords) {
-      mapRef.current.flyTo({ center: userCoords, zoom: 16, pitch: 45 });
+      mapRef.current.flyTo({ center: userCoords, zoom: 15, pitch: 30 });
     } else if (mapRef.current && validCoords.length > 0) {
-      mapRef.current.flyTo({ center: validCoords[0], zoom: 14 });
+      fitItineraryBounds();
+    }
+  };
+
+  const fitItineraryBounds = () => {
+    if (mapRef.current && validCoords.length > 0) {
+      const bounds = validCoords.reduce(
+        (b, coord) => b.extend(coord),
+        new maplibregl.LngLatBounds(validCoords[0], validCoords[0])
+      );
+      mapRef.current.fitBounds(bounds, { padding: 70, maxZoom: 14 });
     }
   };
 
@@ -789,6 +824,30 @@ export default function TripMap({
               <MapPin className="w-3.5 h-3.5 text-[var(--gold)]" />
               <span>{destination} • {places.length} Stops</span>
             </div>
+          )}
+
+          {validCoords.length > 0 && (
+            <button
+              type="button"
+              onClick={fitItineraryBounds}
+              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/20 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              title="Fit map view to all trip itinerary stops"
+            >
+              <Compass className="w-3.5 h-3.5 text-[var(--gold)]" />
+              <span className="hidden sm:inline">Fit Trip Stops</span>
+            </button>
+          )}
+
+          {userCoords && (
+            <button
+              type="button"
+              onClick={recenterUser}
+              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/20 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              title="Focus on my location"
+            >
+              <Navigation className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">My Location</span>
+            </button>
           )}
         </div>
 
