@@ -541,28 +541,38 @@ export default function TripMap({
       }
     });
 
-    // Add Google Maps Style Directional Path Arrows along Route Segments
+    // Add Directional Arrow Markers — point toward user's live GPS when available,
+    // otherwise fall back to the stop-to-stop route direction
     for (let i = 0; i < validCoords.length - 1; i++) {
       const p1 = validCoords[i];
       const p2 = validCoords[i + 1];
       const midLng = (p1[0] + p2[0]) / 2;
       const midLat = (p1[1] + p2[1]) / 2;
-      const heading = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
+
+      // When user's live location is available, arrows point from the midpoint toward the user
+      const heading = userCoords
+        ? calculateBearing(midLng, midLat, userCoords[0], userCoords[1])
+        : calculateBearing(p1[0], p1[1], p2[0], p2[1]);
+
+      const hasLiveTarget = !!userCoords;
+      const arrowColor = hasLiveTarget ? "#34d399" : "#dfb26c"; // emerald when pointing at user
+      const borderColor = hasLiveTarget ? "#10b981" : "#dfb26c";
 
       const arrowEl = document.createElement("div");
       arrowEl.className = "flex items-center justify-center pointer-events-none";
       arrowEl.style.cssText = `
         background: rgba(18, 18, 20, 0.95);
-        color: #dfb26c;
+        color: ${arrowColor};
         width: 26px;
         height: 26px;
         border-radius: 50%;
-        border: 1.5px solid #dfb26c;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+        border: 1.5px solid ${borderColor};
+        box-shadow: 0 4px 14px ${hasLiveTarget ? "rgba(16,185,129,0.5)" : "rgba(0,0,0,0.7)"};
         display: flex;
         align-items: center;
         justify-content: center;
         transform: rotate(${heading}deg);
+        transition: transform 0.4s ease, color 0.3s ease, border-color 0.3s ease;
         z-index: 5;
       `;
       arrowEl.innerHTML = `
@@ -611,7 +621,7 @@ export default function TripMap({
       }
       setDirections(null);
     }
-  }, [places.length, members.length, mapLoaded, navMode, activePoiCategory, JSON.stringify(validCoords)]);
+  }, [places.length, members.length, mapLoaded, navMode, activePoiCategory, JSON.stringify(validCoords), userCoords?.[0], userCoords?.[1]]);
 
   // 3. GEOLOCATION WATCH POSITION WHEN LIVE NAV IS ACTIVE
   // Seed initial coords from prop if available (avoids waiting for first watchPosition event)
