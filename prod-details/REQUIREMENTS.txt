@@ -1,0 +1,461 @@
+TRAVEL PLANNER + EXPENSE TRACKER - IMPLEMENTATION REQUIREMENTS
+Release: CBC 2.0 hackathon baseline v3
+Database: Neon PostgreSQL + PostGIS
+Authentication: Neon Auth (managed) - NOT a self-hosted Better Auth implementation
+Hosting: Vercel
+
+================================================================
+0. NON-NEGOTIABLE IMPLEMENTATION DECISIONS
+================================================================
+
+1. Use Neon Auth through @neondatabase/auth and its supported Next.js
+   integration. Do not install/configure a separate better-auth server.
+2. Do not create duplicate auth/user/session/account/verification tables
+   in the app schema. Neon Auth manages its own neon_auth schema.
+3. The app-owned profile table stores the Neon Auth session user ID and
+   product-specific profile values. It must not store passwords/tokens.
+4. All database operations happen on the server. Every trip-scoped
+   endpoint checks authentication and active trip membership. Owner-only
+   operations also check the owner role.
+5. Do not embed secrets in source code, Markdown, prompts, screenshots,
+   client bundles, or version control. Keep .env* in .gitignore and commit
+   only .env.example with blank values/placeholders.
+6. Money is stored as integer paise. Expense + split rows must be written
+   atomically, and optimistic version checks must prevent lost updates.
+7. AI cannot invent place IDs or authoritative route times. Validate all
+   structured AI output, then run the deterministic conflict checker.
+8. Implement the core demo before any stretch feature.
+
+================================================================
+1. REQUIRED ENVIRONMENT
+================================================================
+
+- Node.js current LTS
+- pnpm
+- Git
+- Modern browser (Chrome/Edge/Firefox/Safari)
+- Neon CLI (latest stable)
+- Optional: Docker/local PostGIS for offline database experiments
+- Optional: Ollama if a local LLM fallback is specifically required
+
+================================================================
+2. NEON PROJECT AND BRANCH
+================================================================
+
+The supplied setup file identifies:
+- Neon project ID: polished-cherry-69779733
+- Intended production branch: production
+- Neon Auth is enabled through the Neon project configuration.
+
+Branch rule:
+- Link the deployed app to the production branch for the hackathon demo.
+- Prefer a separate development branch for local/preview testing.
+- The database URL and Auth URL must always refer to the same branch.
+- Neon Auth URLs are branch-specific. Re-copy URL/JWKS values from Neon
+  if the branch or endpoint changes.
+
+Run from the project repository's root, after confirming this is the right
+repository and intended project:
+
+  npm i -g neon@latest && neon login
+  neon skills -y
+  neon mcp -y
+  neon link --project-id polished-cherry-69779733 --branch production -y
+  neon config init
+
+Create or update neon.ts in the repository root:
+
+  import { defineConfig } from "@neon/config/v1";
+
+  export default defineConfig({
+    auth: true,
+  });
+
+Then inspect the target project/branch configuration and run:
+
+  neon deploy
+
+Do not run deploy commands against an uncertain or unintended branch.
+
+The database is Neon PostgreSQL. Enable PostGIS if supported/required by
+this project's Neon compute and add a migration containing:
+
+  CREATE EXTENSION IF NOT EXISTS postgis;
+
+================================================================
+3. NEON AUTH INTEGRATION
+================================================================
+
+Install the supported Neon Auth integration packages; use the package's
+current official Next.js documentation if API details have changed:
+
+  pnpm add @neondatabase/auth @neondatabase/auth-ui
+
+Expected integration responsibilities:
+- Browser auth client points to the current branch's Neon Auth URL.
+- Server auth integration uses createNeonAuth from
+  @neondatabase/auth/next/server.
+- Expose the supported handler at app/api/auth/[...path]/route.ts.
+- Use the SDK's session lookup in server components/handlers.
+- Configure the supported proxy.ts middleware for route/session handling.
+- Generate a secret for Neon Auth's server cookie/session caching.
+- Use the returned Neon Auth user ID as app profile.user_id.
+- Configure email/password and verification behaviour through Neon Auth.
+  No separate email provider (Resend/SMTP) is part of the hackathon.
+- Keep DOB and trip preferences in the app-owned profile table, not in
+  custom password/auth tables.
+
+Do NOT:
+- install or configure `better-auth` as the application's auth server;
+- create BETTER_AUTH_SECRET or BETTER_AUTH_URL;
+- manually hash or store passwords;
+- write directly to tables in Neon's managed neon_auth schema;
+- rely on middleware alone instead of validating membership in APIs.
+
+================================================================
+4. ENVIRONMENT VARIABLES
+================================================================
+
+Create .env.local for local development, and add matching values in the
+Vercel environment settings. Commit only names/placeholders in .env.example.
+
+  DATABASE_URL=                 # pooled connection for app runtime
+  DATABASE_URL_UNPOOLED=        # direct connection for migrations
+  NEON_AUTH_BASE_URL=            # branch-specific Neon Auth URL
+  NEXT_PUBLIC_NEON_AUTH_URL=     # same Auth URL; public endpoint only
+  NEON_AUTH_COOKIE_SECRET=       # generate a new random secret, >= 32 chars
+  NEON_AUTH_JWKS_URL=            # optional; for explicit JWT verification
+  ORS_API_KEY=                   # OpenRouteService token
+  LLM_PROVIDER=gemini
+  LLM_API_KEY=                   # freshly generated Gemini API key
+  APP_URL=http://localhost:3000
+
+Project-specific URLs supplied for the production branch:
+
+  NEON_AUTH_BASE_URL=https://ep-shiny-sound-b5y62lzb.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth
+  NEXT_PUBLIC_NEON_AUTH_URL=https://ep-shiny-sound-b5y62lzb.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth
+  NEON_AUTH_JWKS_URL=https://ep-shiny-sound-b5y62lzb.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json
+
+The supplied file also contained a database password and third-party API
+keys. Those values are intentionally NOT reproduced in this requirements
+file. Treat them as exposed and rotate/reset them before deployment.
+
+Generate an application-side cookie secret with a secure random generator,
+for example:
+
+  openssl rand -base64 32
+
+Do not use NEXT_PUBLIC_ for database strings, cookie secrets, ORS tokens,
+or LLM keys. Only the Auth endpoint URL is public configuration.
+
+================================================================
+5. DEPENDENCIES
+================================================================
+
+Install only packages not already present in the existing project. Use
+pnpm-lock.yaml to lock resolved versions and test the combined versions.
+
+Core framework and validation:
+  pnpm add next react react-dom zod luxon @tanstack/react-query
+
+Neon database:
+  pnpm add drizzle-orm @neondatabase/serverless ws
+  pnpm add -D drizzle-kit @types/ws
+
+Neon Auth:
+  pnpm add @neondatabase/auth @neondatabase/auth-ui
+
+UI and itinerary editor:
+  pnpm add tailwindcss postcss autoprefixer
+  pnpm add class-variance-authority clsx tailwind-merge lucide-react
+  pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities maplibre-gl
+  pnpm dlx shadcn@latest init
+
+LLM and optional geo helpers:
+  pnpm add ai @ai-sdk/google @turf/turf opening_hours
+
+Developer/test tooling:
+  pnpm add -D tsx vitest eslint prettier eslint-config-next
+  pnpm add -D @types/node @types/react @types/react-dom typescript
+
+Do not add better-auth. Do not add Resend/SMTP, Pusher, Upstash, Web Push,
+Dexie/Serwist, Sentry, or cron/job queue dependencies for the core demo.
+
+================================================================
+6. FUNCTIONAL REQUIREMENTS (M = MUST, S = STRETCH)
+================================================================
+
+IDENTITY AND PROFILE
+ FR-01 (M) Sign up and sign in using Neon Auth's supported flows.
+ FR-02 (M) Sign out and handle missing/expired sessions correctly.
+ FR-03 (M) Use the Neon Auth user ID as the application user identifier.
+ FR-04 (M) Store display name, DOB, vibe tags, pace, and budget level in
+           an app-owned profile record; no password/auth data in profile.
+ FR-05 (M) Profile and protected API calls require a valid authenticated
+           user; no local fallback that bypasses Neon Auth.
+ FR-06 (S) Allow per-trip preference overrides.
+
+TRIPS
+ FR-10 (M) Create solo, family, and group trips.
+ FR-11 (M) Capture number of people for family/group trips.
+ FR-12 (M) Capture destination, start/end dates, destination timezone or
+           documented default, daily start/end hours.
+ FR-13 (M) Capture transport mode as a manual selection.
+ FR-14 (M) Store trip budget in integer paise.
+ FR-15 (M) Validate required fields and start date <= end date.
+ FR-16 (M) Only active members can read or update trip data.
+ FR-17 (M) Owner-only trip settings and member-management actions are
+           enforced on the server.
+
+PLACE DISCOVERY
+ FR-20 (M) Suggest known places with an explanation based on defined rules.
+ FR-21 (M) Search the app-owned places table by name/destination/category.
+ FR-22 (M) Allow custom place with name and valid map coordinates.
+ FR-23 (M) Never use a “trending” label without valid time-series data.
+ FR-24 (M) Store source/verification/hours-confidence metadata as available.
+ FR-25 (S) Show weather from Open-Meteo with a graceful unavailable state.
+
+ITINERARY GENERATION AND EDITING
+ FR-30 (M) Generate a day-by-day draft from trip details and selected places.
+ FR-31 (M) Generate one day per request; enforce a per-user request cap.
+ FR-32 (M) Reject malformed AI output and unknown/unselected place IDs.
+ FR-33 (M) Derive route duration/distance from route provider/cache or a
+           clearly labelled straight-line estimate; never from the LLM.
+ FR-34 (M) Show estimated itinerary cost and compare it with trip budget.
+ FR-35 (M) Allow users to add/remove/reorder stops and edit time, duration,
+           note, and estimated cost in the itinerary editor.
+ FR-36 (M) Run conflict checks after generation and each edit.
+ FR-37 (M) Confirm/lock itinerary; owner must reopen before later edits.
+ FR-38 (M) Use version check on writes and return conflict on stale version.
+
+CONFLICT CHECKER
+ FR-40 (M) Detect overlapping stops.
+ FR-41 (M) Detect closure at scheduled time when reliable hours are known.
+ FR-42 (M) Detect transfer duration longer than the schedule gap.
+ FR-43 (M) Detect a day that exceeds the configured time window.
+ FR-44 (M) Detect estimated cost above the trip budget.
+ FR-45 (M) Treat unknown hours as a warning, not an automatic error.
+ FR-46 (M) Return type, severity, affected stop IDs, message, and suggested fix.
+ FR-47 (M) Allow warning override only under explicit rules; blocking errors
+           cannot be bypassed by merely acknowledging a warning.
+
+SHARING AND COLLABORATION
+ FR-50 (M) Generate share link /join/CODE for family/group trips only.
+ FR-51 (M) Require Neon Auth session before joining; resume join after login.
+ FR-52 (M) Use a cryptographically secure 8-character join code.
+ FR-53 (M) Owner may regenerate code; old code becomes invalid immediately.
+ FR-54 (M) Owner may remove a member; removed members lose access immediately.
+ FR-55 (M) Reject access to private trip IDs for non-members.
+ FR-56 (M) Use optimistic version check for itinerary edits.
+
+EXPENSES AND SETTLEMENT
+ FR-60 (M) Log amount, currency (INR), category, date, note, payer, and
+           participating split members.
+ FR-61 (M) Store amount/share values as integer paise.
+ FR-62 (M) Display budget versus actual spend by category.
+ FR-63 (M) Support equal split and exact-amount split in core release.
+ FR-64 (M) Equal-split remainder is assigned deterministically to the payer;
+           payer must be a participant in that split.
+ FR-65 (M) Validate exact shares sum exactly to the full expense amount.
+ FR-66 (M) Persist an expense and all split rows in one transaction.
+ FR-67 (M) Compute group running balances and a minimum-payment settle-up.
+ FR-68 (M) Mark settlement status as a record only; no money is transferred.
+ FR-69 (M) Use expense version checks to reject stale edits.
+ FR-70 (S) Support expense edit/delete audit trail.
+ FR-71 (S) Support percentage or weighted-share splits if core work is done.
+
+STRETCH
+ FR-80 (S) Manual place check-in or status (“Running late”, “I'm safe”).
+ FR-81 (S) Refresh member status by polling, with last-updated timestamp.
+ FR-82 (S) Keep only latest status per member; no continuous GPS.
+ FR-83 (S) Let a member skip a main itinerary stop and optionally add an
+           alternative to a branch; store differences only.
+ FR-84 (S) Show trip summary with stops, budget, spend, and per-person totals.
+
+================================================================
+7. NON-FUNCTIONAL REQUIREMENTS
+================================================================
+
+ NFR-01 Performance: target first itinerary day in about 10 seconds in
+        normal demo conditions; show progress and use fallback if needed.
+ NFR-02 Responsive: usable in desktop and mobile browsers.
+ NFR-03 Resilience: LLM fallback to rule-based schedule, route fallback to
+        labelled straight-line estimate, place results from seeded database.
+ NFR-04 Security: Neon Auth sessions; server-side auth/member/role checks;
+        Zod validation; secret environment variables only.
+ NFR-05 Data integrity: integer paise; transactional expense+split writes;
+        version checks on itinerary and expense mutations.
+ NFR-06 AI integrity: allow-listed place IDs, schema validation, at most one
+        repair retry, no AI-generated authoritative route data.
+ NFR-07 Neon: pooled URL for runtime, unpooled URL for migrations, branch-
+        matched Auth URL, transaction-capable DB driver where needed.
+ NFR-08 Generation protection: per-user generation-call cap and bounded
+        retry/timeout to protect free-tier quotas.
+ NFR-09 Demo safety: real Neon Auth demo identity, app-owned seeded trip,
+        cached/fallback itinerary, and manual backup recording.
+ NFR-10 Privacy: DOB is not shown in trip views; no continuous GPS tracking.
+
+================================================================
+8. DATA MODEL REQUIREMENTS
+================================================================
+
+Neon Auth-managed data (do not create app copies):
+- neon_auth schema managed by Neon Auth.
+- Do not define local user/session/account/verification/password tables.
+
+App-owned tables:
+- profile(user_id, display_name, date_of_birth, vibe_tags, pace,
+  budget_level, created_at, updated_at)
+- trip(id, owner_id, type, people_count, destination, timezone, start_date,
+  end_date, daily_start, daily_end, transport_mode, budget_paise, status,
+  join_code, version, created_at, updated_at)
+- trip_member(trip_id, user_id, role, joined_at, removed_at)
+- place(id, name, category, location, destination, source, opening_hours,
+  hours_confidence, description, image_url, image_author, image_license,
+  popularity_score, verified, created_by)
+- itinerary(id, trip_id, status, version, updated_by, updated_at)
+- stop(id, itinerary_id, place_id, day_index, start_time, end_time,
+  sort_order, est_cost_paise, notes)
+- route_cache(origin_key, destination_key, mode, duration_s, distance_m,
+  fetched_at, source, is_approximate)
+- expense(id, trip_id, payer_id, amount_paise, category, note, spent_at,
+  split_type, version, created_by, created_at, updated_at)
+- expense_split(expense_id, user_id, share_paise)
+- settlement(id, trip_id, from_user, to_user, amount_paise, status,
+  created_at, settled_at)
+- Optional stretch tables: checkin, branch, branch_member,
+  branch_stop_change, expense_audit.
+
+Indexes/constraints:
+- GiST index for place coordinates if PostGIS is enabled.
+- Search index for place names.
+- Index trip_id on trip-scoped tables.
+- Unique join_code; unique active membership per trip/user.
+- One current itinerary per trip unless a version/history model is deliberately
+  implemented.
+- Foreign keys between app-owned tables.
+- Check constraints for positive budget/expense, positive duration, and
+  non-negative split shares where practical.
+
+================================================================
+9. PLACE SEEDING AND PROVIDERS
+================================================================
+
+Places:
+1. Choose two or three destinations (for example Goa, Coorg, Hampi).
+2. Run a one-time scripts/seed-places.ts from OpenStreetMap/Overpass.
+3. Normalise names/categories and remove duplicates.
+4. Optionally enrich a small curated subset with descriptions/images and
+   record attribution/licence.
+5. Manually verify hours for demo places and set hours_confidence.
+6. Insert into Neon; normal app requests must query this database, not call
+   Overpass live.
+7. Show “© OpenStreetMap contributors” attribution where required.
+
+Providers:
+- Neon Auth: managed authentication; branch-specific auth endpoint.
+- Neon PostgreSQL/PostGIS: domain data and route cache.
+- OpenFreeMap: map tiles (verify current licence/terms before deployment).
+- OpenRouteService: directions/matrix; cache every route result.
+- Gemini: LLM if LLM_PROVIDER=gemini and a valid key is set.
+- Open-Meteo: optional weather only.
+- Overpass/Wikipedia: seed-time data sources, not required at runtime.
+
+================================================================
+10. FAILURE HANDLING AND CACHE RULES
+================================================================
+
+- Neon Auth failure: show clear error; never bypass authentication.
+- Database timeout/cold start: loading state and one safe retry where
+  duplicate writes cannot occur.
+- ORS failure/quota: cache first, then straight-line estimate and label it
+  approximate.
+- LLM failure/rate limit/invalid JSON: retry one time; then deterministic
+  schedule and show that AI-generated descriptions are unavailable.
+- Weather failure: hide panel or show unavailable state.
+- Empty place search: present the custom-place entry flow.
+- Stale itinerary/expense write: HTTP 409 with a reload/reconcile action.
+- Invalid join code: safe error; do not reveal private trip information.
+
+================================================================
+11. TESTING PRIORITIES
+================================================================
+
+1. Authenticated versus unauthenticated session handling through Neon Auth.
+2. Profile ties to the real signed-in user ID; no duplicate auth records.
+3. Membership guard: owner, active member, removed member, and unrelated user.
+4. Join code: valid, invalid, duplicate join, regenerated code, removed member.
+5. Expense split: equal, remainder, exact-share total, invalid values.
+6. Settlement balance and minimum-payment calculation.
+7. Conflict rules: overlap, closure, transfer gap, day length, over-budget,
+   unknown-hours warning.
+8. AI: malformed JSON, unknown IDs, missing IDs, provider error, fallback.
+9. Route cache and approximate fallback label.
+10. Version conflict for concurrent itinerary and expense updates.
+11. Manual two-account end-to-end demo on the same Neon Auth branch.
+
+================================================================
+12. IMPLEMENTATION ORDER
+================================================================
+
+1. Verify current app/landing page framework, Neon project, production branch,
+   Auth URL, and environment variable handling.
+2. Configure Neon CLI and `neon.ts` auth: true.
+3. Integrate Neon Auth client/server/proxy; wire auth routes and protected UI.
+4. Build Drizzle schema/migrations for app-owned tables, profile onboarding,
+   and shared membership/role guards.
+5. Build trip create/list/details and curated place seed/search/suggest.
+6. Build custom place/map pin, routing cache, and fallback estimates.
+7. Build itinerary generation, JSON validation, editor, conflict checks,
+   version checks, confirm/reopen.
+8. Build join flow/member management.
+9. Build expense creation/splits/balances/settle-up and unit tests.
+10. Seed demo app records linked to a real Neon Auth demo user.
+11. Deploy to Vercel, set branch-matched variables, run acceptance checklist.
+12. Add stretch features only after the core demo is stable.
+
+================================================================
+13. DEPLOY CHECKLIST
+================================================================
+
+[ ] `.env*` ignored before first commit; `.env.example` contains placeholders.
+[ ] Neon CLI is linked to the intended project and production branch.
+[ ] `neon.ts` contains `auth: true`; deploy is run against intended branch.
+[ ] Neon Auth URL is configured and points to the same branch as DATABASE_URL.
+[ ] NEON_AUTH_COOKIE_SECRET generated afresh and stored as a secret variable.
+[ ] Database pooled/direct URLs set in the right environments.
+[ ] Drizzle migrations applied; PostGIS enabled if supported/needed.
+[ ] No Better Auth package/server/env variables or duplicate auth tables remain.
+[ ] No passwords, DB credentials, Gemini keys, or ORS keys in source control.
+[ ] Demo account created through Neon Auth, then app seed script run.
+[ ] Sign-up, login, logout, profile, trip CRUD, join, membership removal pass.
+[ ] Expenses, split arithmetic, conflict checks, and concurrent edits pass.
+[ ] LLM/routing fallbacks tested at least once.
+[ ] Mobile browser demo and hotspot backup tested.
+
+================================================================
+14. POST-HACKATHON
+================================================================
+
+- Evaluate Neon Auth-supported verification/reset flows and configure product
+  UX around the managed provider rather than adding parallel auth code.
+- Add viewer role, full privacy/legal review, deletion/export flows, and
+  specific DPDP compliance assessment where applicable.
+- Add monitoring/rate limiting, broader places import, and stronger abuse
+  controls for join-code endpoints.
+- Consider realtime updates, push notifications, offline support, full
+  itinerary branching/replanning, and expense audit history.
+- Re-check all provider quotas, licences, and current package documentation.
+
+================================================================
+15. SECURITY NOTICE
+================================================================
+
+The supplied got_requirements file contains credentials/secrets in plaintext,
+including a database connection credential and third-party API keys. The
+values are not copied into this file or any generated artifact. Treat them as
+exposed: rotate the Neon database password/connection credentials and
+regenerate the affected Gemini and routing keys before using the project in a
+deployed environment. Remove committed copies from Git history if any were
+committed. Store replacement values only in local/Vercel secret settings.
+

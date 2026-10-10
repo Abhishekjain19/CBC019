@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voyara — Travel Planner & Expense Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600;1,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=10">
+</head>
+<body>
+  <!-- Fixed Background Animation Canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- Persistent Top Navigation Bar -->
+  <header class="navbar" id="navbar">
+    <a href="#" class="brand-logo">
+      <svg class="logo-icon" viewBox="0 0 28 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 17L10 3L16 13L21 6L26 17H2Z" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Voyara</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="#destinations" class="nav-link">Destinations</a>
+      <a href="#experiences" class="nav-link">Experiences</a>
+      <a href="#planner" class="nav-link" id="navPlannerLink">Trip Planner</a>
+      <a href="#expenses" class="nav-link" id="navExpensesLink">Expenses</a>
+      <a href="#about" class="nav-link">About</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="icon-btn search-toggle" id="searchBtn" aria-label="Search Places">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </button>
+      <button class="btn btn-pill-nav" id="navPlanTripBtn">Plan My Trip</button>
+      <button class="btn btn-outline-nav" id="navSignInBtn">Sign In</button>
+    </div>
+  </header>
+
+  <!-- ==================== LANDING SECTION (First Frame - Project Requirements) ==================== -->
+  <div class="overlay landing-overlay" id="landingOverlay"></div>
+  <div class="hero-body landing-hero" id="landingHero">
+    <main class="hero-content">
+      <div class="eyebrow">VOYARA · TRAVEL PLANNER & EXPENSE TRACKER</div>
+      <h1 class="main-title landing-title">
+        Plan Trips<br>
+        Beyond the Ordinary
+      </h1>
+      <p class="subtitle landing-subtitle">
+        AI-assisted day-by-day itineraries, collaborative group planning, and automated expense splitting — all in one place.
+      </p>
+      <div class="cta-row">
+        <button class="btn btn-primary-cta" id="startPlanningCta">
+          <span>Start Planning Trip</span>
+          <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+        <button class="btn btn-secondary-cta" id="joinTripCta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="8.5" cy="7" r="4"/>
+            <line x1="20" y1="8" x2="20" y2="14"/>
+            <line x1="23" y1="11" x2="17" y2="11"/>
+          </svg>
+          <span>Join Group Trip</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- Floating Search / Booking Widget Bar -->
+    <div class="search-widget-container">
+      <div class="search-widget">
+        <div class="search-field" id="searchFieldDestination">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 21s-7-4.35-7-10a7 7 0 1 1 14 0c0 5.65-7 10-7 10z"/>
+              <circle cx="12" cy="10" r="2.5"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Where to?</span>
+            <span class="field-value" id="fieldValDestination">Goa, Coorg, Hampi</span>
+          </div>
+        </div>
+
+        <div class="search-divider"></div>
+
+        <div class="search-field" id="searchFieldDates">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="3" ry="3"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Travel Dates</span>
+            <span class="field-value">Nov 15 – Nov 20</span>
+          </div>
+        </div>
+
+        <div class="search-divider"></div>
+
+        <div class="search-field" id="searchFieldTravelers">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Travelers</span>
+            <span class="field-value">Group (4 members)</span>
+          </div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+
+        <button class="search-submit-btn" id="searchSubmitBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Plan with AI</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Feature Badges -->
+    <footer class="bottom-features landing-features">
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-white">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+        </div>
+        <span class="feature-title">Curated Destinations</span>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-white">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+            <line x1="8" y1="2" x2="8" y2="18"/>
+            <line x1="16" y1="6" x2="16" y2="22"/>
+          </svg>
+        </div>
+        <span class="feature-title">AI Itineraries</span>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-white">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M6 12h.01M18 12h.01"/>
+          </svg>
+        </div>
+        <span class="feature-title">Expense Splitting</span>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-white">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <span class="feature-title">Conflict-Free Schedule</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================== ENDING SECTION (Last Frame - Luxury Design + Project CTAs) ==================== -->
+  <div class="overlay ending-overlay" id="endingOverlay"></div>
+  <div class="hero-body ending-hero" id="endingHero">
+    <main class="hero-content">
+      <div class="eyebrow">EXPLORE A BRIGHTER WORLD WITH VOYARA</div>
+      <h1 class="main-title">
+        <span class="luxury-serif">Luxury</span>
+        <span class="journey-sans">Journeys that feel extraordinary.</span>
+      </h1>
+      <p class="subtitle">
+        Discover handpicked destinations, unique stays and curated experiences for your next unforgettable journey.
+      </p>
+      <div class="cta-row end-cta-row">
+        <button class="btn btn-primary-cta" id="endPlanTripCta">
+          <span>Launch AI Trip Planner</span>
+          <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+        <button class="btn btn-secondary-cta" id="endJoinTripCta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+            <polyline points="10 17 15 12 10 7"/>
+            <line x1="15" y1="12" x2="3" y2="12"/>
+          </svg>
+          <span>Enter Join Code</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- Floating Search / Booking Widget Bar -->
+    <div class="search-widget-container">
+      <div class="search-widget">
+        <div class="search-field">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 21s-7-4.35-7-10a7 7 0 1 1 14 0c0 5.65-7 10-7 10z"/>
+              <circle cx="12" cy="10" r="2.5"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Where to?</span>
+            <span class="field-value">Goa Beachfront Villa</span>
+          </div>
+        </div>
+
+        <div class="search-divider"></div>
+
+        <div class="search-field">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="3" ry="3"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Travel Dates</span>
+            <span class="field-value">Dec 24 – Dec 30</span>
+          </div>
+        </div>
+
+        <div class="search-divider"></div>
+
+        <div class="search-field">
+          <div class="field-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="field-info">
+            <span class="field-label">Travelers</span>
+            <span class="field-value">4 travelers</span>
+          </div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+
+        <button class="search-submit-btn" id="endSearchSubmitBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Search Stays</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Feature Badges (Warm Golden Luxury Accents with Subtitles) -->
+    <footer class="bottom-features ending-features">
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-gold">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+        </div>
+        <div class="feature-text">
+          <div class="feature-title">Curated Destinations</div>
+          <div class="feature-sub">Iconic places, handpicked</div>
+        </div>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-gold">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+            <line x1="8" y1="2" x2="8" y2="18"/>
+            <line x1="16" y1="6" x2="16" y2="22"/>
+          </svg>
+        </div>
+        <div class="feature-text">
+          <div class="feature-title">Personalized Itineraries</div>
+          <div class="feature-sub">Trips tailored to you</div>
+        </div>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-gold">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M2 4v16"/>
+            <path d="M2 8h18a2 2 0 0 1 2 2v10"/>
+            <path d="M2 17h20"/>
+            <path d="M6 8v9"/>
+          </svg>
+        </div>
+        <div class="feature-text">
+          <div class="feature-title">Stays & Experiences</div>
+          <div class="feature-sub">Best stays, local experiences</div>
+        </div>
+      </div>
+
+      <div class="feature-item">
+        <div class="feature-icon feature-icon-gold">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M6 12h.01M18 12h.01"/>
+          </svg>
+        </div>
+        <div class="feature-text">
+          <div class="feature-title">Fair Expense Split</div>
+          <div class="feature-sub">Integer paise precision</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================== MODALS FOR PROJECT REQUIREMENTS ==================== -->
+  <!-- 1. Plan Trip Modal -->
+  <div class="modal-backdrop" id="planTripModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge">AI Trip Planner</span>
+          <h2>Create New Voyage</h2>
+          <p>Generate a conflict-free itinerary powered by Gemini AI</p>
+        </div>
+        <button class="modal-close-btn" id="closePlanModal">&times;</button>
+      </div>
+      <form id="planTripForm" class="modal-form">
+        <div class="form-group">
+          <label for="tripDestination">Destination</label>
+          <select id="tripDestination" required>
+            <option value="Goa">Goa (Beaches, Heritage & Nightlife)</option>
+            <option value="Coorg">Coorg (Coffee Plantations & Waterfalls)</option>
+            <option value="Hampi">Hampi (UNESCO Ruins & Boulders)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tripType">Trip Type</label>
+            <select id="tripType">
+              <option value="solo">Solo Adventure</option>
+              <option value="family">Family Trip</option>
+              <option value="group" selected>Friend Group</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="peopleCount">People Count</label>
+            <input type="number" id="peopleCount" min="1" max="25" value="4" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="startDate">Start Date</label>
+            <input type="date" id="startDate" value="2026-11-15" required>
+          </div>
+          <div class="form-group">
+            <label for="endDate">End Date</label>
+            <input type="date" id="endDate" value="2026-11-18" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="transportMode">Transport Mode</label>
+            <select id="transportMode">
+              <option value="driving" selected>Self-Drive / Cab</option>
+              <option value="walking">Walk & Public Transit</option>
+              <option value="cycling">Bicycle / Two-Wheeler</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="budgetPaise">Total Budget (₹)</label>
+            <input type="number" id="budgetPaise" min="1000" step="500" value="45000" placeholder="in Rupees">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary-modal" id="cancelPlanBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary-modal">
+            <span>Generate Itinerary Draft</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <polyline points="13 17 18 12 13 7"/>
+              <polyline points="6 17 11 12 6 7"/>
+            </svg>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Join Trip Modal -->
+  <div class="modal-backdrop" id="joinTripModal">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge">Collaboration</span>
+          <h2>Join Trip</h2>
+          <p>Enter the 8-character invite code shared by your trip owner</p>
+        </div>
+        <button class="modal-close-btn" id="closeJoinModal">&times;</button>
+      </div>
+      <form id="joinTripForm" class="modal-form">
+        <div class="form-group">
+          <label for="joinCodeInput">Invite Code</label>
+          <input type="text" id="joinCodeInput" placeholder="e.g. VOYARA26" maxlength="8" style="text-transform:uppercase; letter-spacing: 0.15em; font-weight:700; text-align:center; font-size:1.2rem;" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary-modal" id="cancelJoinBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary-modal">
+            <span>Join Voyage</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. Success / Notification Toast -->
+  <div class="toast-notification" id="toastNotification"></div>
+
+  <script src="script.js?v=10"></script>
+</body>
+</html>

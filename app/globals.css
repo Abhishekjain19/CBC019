@@ -1,0 +1,475 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design Tokens ── */
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --gold: #dfb26c;
+  --gold-dim: rgba(223, 178, 108, 0.15);
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --card: rgba(255, 255, 255, 0.04);
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --muted: rgba(255, 255, 255, 0.06);
+  --popover: #0f0f0f;
+  --nav-bg: rgba(0, 0, 0, 0.85);
+  --nav-scrolled: rgba(0, 0, 0, 0.65);
+  --text-muted: rgba(255, 255, 255, 0.60);
+  --text-subtle: rgba(255, 255, 255, 0.40);
+  /* Elevation via shadow only — no mixed border+shadow */
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.24);
+  --shadow-gold: 0 4px 20px rgba(223, 178, 108, 0.18);
+  /* Emil Kowalski Craft Shadows (Multi-stop physical depth) */
+  --shadow-craft-sm: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 2px 8px -1px rgba(0, 0, 0, 0.45);
+  --shadow-craft-md: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.6);
+  --shadow-craft-lg: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 36px -6px rgba(0, 0, 0, 0.75);
+  --shadow-craft-modal: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 24px 60px -10px rgba(0, 0, 0, 0.9);
+}
+
+[data-theme="light"] {
+  --background: #fbfbfa;
+  --foreground: #09090b;
+  --gold: #b47818;
+  --gold-dim: rgba(180, 120, 24, 0.12);
+  --surface-1: #ffffff;
+  --surface-2: #f4f4f5;
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --card: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.07);
+  --muted: #f4f4f5;
+  --popover: #ffffff;
+  --nav-bg: rgba(251, 251, 250, 0.92);
+  --nav-scrolled: rgba(251, 251, 250, 0.96);
+  --text-muted: #52525b;
+  --text-subtle: #71717a;
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-gold: 0 4px 20px rgba(180, 120, 24, 0.12);
+  /* Emil Kowalski Craft Shadows (Multi-stop physical depth - Light Mode) */
+  --shadow-craft-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.06);
+  --shadow-craft-md: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 20px -4px rgba(0, 0, 0, 0.08);
+  --shadow-craft-lg: 0 2px 4px rgba(0, 0, 0, 0.04), 0 16px 32px -6px rgba(0, 0, 0, 0.11);
+  --shadow-craft-modal: 0 10px 25px -4px rgba(0, 0, 0, 0.12), 0 24px 50px -10px rgba(0, 0, 0, 0.18);
+}
+
+/* Force dark palette on landing page */
+[data-force-dark],
+[data-force-dark] * {
+  --background: #000000 !important;
+  --foreground: #ffffff !important;
+  --gold: #dfb26c !important;
+  --gold-dim: rgba(223, 178, 108, 0.15) !important;
+  --card: rgba(255,255,255,0.04) !important;
+  --card-bg: rgba(255,255,255,0.04) !important;
+  --card-border: rgba(255,255,255,0.08) !important;
+  --border-subtle: rgba(255,255,255,0.09) !important;
+  --nav-bg: transparent !important;
+  --nav-scrolled: rgba(0, 0, 0, 0.65) !important;
+  --text-muted: rgba(255,255,255,0.60) !important;
+  --text-subtle: rgba(255,255,255,0.40) !important;
+  color-scheme: dark;
+}
+
+/* ── Base reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Light mode overrides (not landing) ── */
+[data-theme="light"]:not([data-force-dark]) .bg-black,
+[data-theme="light"] :not([data-force-dark]) > .bg-black {
+  background-color: var(--background) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).text-white {
+  color: var(--foreground) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).text-white\/80,
+[data-theme="light"] :not([data-force-dark] *).text-white\/70,
+[data-theme="light"] :not([data-force-dark] *).text-white\/60,
+[data-theme="light"] :not([data-force-dark] *).text-white\/55,
+[data-theme="light"] :not([data-force-dark] *).text-white\/50 {
+  color: var(--text-muted) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).text-white\/40,
+[data-theme="light"] :not([data-force-dark] *).text-white\/35,
+[data-theme="light"] :not([data-force-dark] *).text-white\/30,
+[data-theme="light"] :not([data-force-dark] *).text-white\/25,
+[data-theme="light"] :not([data-force-dark] *).text-white\/20,
+[data-theme="light"] :not([data-force-dark] *).text-white\/15 {
+  color: var(--text-subtle) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).bg-white\/\[0\.02\],
+[data-theme="light"] :not([data-force-dark] *).bg-white\/\[0\.03\],
+[data-theme="light"] :not([data-force-dark] *).bg-white\/\[0\.04\],
+[data-theme="light"] :not([data-force-dark] *).bg-white\/\[0\.05\],
+[data-theme="light"] :not([data-force-dark] *).bg-white\/\[0\.06\] {
+  background-color: #ffffff !important;
+  box-shadow: var(--shadow-card);
+}
+[data-theme="light"] :not([data-force-dark] *).border-white\/\[0\.05\],
+[data-theme="light"] :not([data-force-dark] *).border-white\/\[0\.06\],
+[data-theme="light"] :not([data-force-dark] *).border-white\/\[0\.08\],
+[data-theme="light"] :not([data-force-dark] *).border-white\/\[0\.1\],
+[data-theme="light"] :not([data-force-dark] *).border-white\/\[0\.12\] {
+  border-color: rgba(0, 0, 0, 0.07) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).bg-black\/80,
+[data-theme="light"] :not([data-force-dark] *).bg-black\/85,
+[data-theme="light"] :not([data-force-dark] *).bg-black\/75,
+[data-theme="light"] :not([data-force-dark] *).bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+[data-theme="light"] :not([data-force-dark] *).field-input {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] :not([data-force-dark] *).field-input::placeholder {
+  color: #94a3b8 !important;
+}
+[data-theme="light"] :not([data-force-dark] *).bg-\[\#0d0d0d\] {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+}
+
+/* ── Browser surfaces (craft-floor requirement) ── */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+::selection {
+  background: rgba(223, 178, 108, 0.30);
+  color: inherit;
+}
+
+[data-theme="light"] ::selection {
+  background: rgba(180, 120, 24, 0.18);
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Input caret */
+input, textarea {
+  caret-color: var(--gold);
+}
+
+/* ── Navbar ── */
+:root {
+  --nav-scrolled: rgba(0, 0, 0, 0.65);
+}
+
+#navbar {
+  transition: background 0.4s ease, backdrop-filter 0.4s ease;
+  border-bottom: 1px solid transparent;
+}
+
+#navbar.scrolled {
+  background: var(--nav-scrolled) !important;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+}
+
+/* ── Emil animation tokens ── */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── Button micro-interactions ── */
+@media (hover: hover) and (pointer: fine) {
+  .btn-press {
+    transition: transform 140ms var(--ease-out-expo), opacity 140ms ease;
+  }
+  .btn-press:hover { opacity: 0.88; }
+}
+.btn-press:active { transform: scale(0.96); }
+
+/* ── Form fields ── */
+.field-input {
+  transition: border-color 180ms var(--ease-out-expo),
+              box-shadow 180ms var(--ease-out-expo),
+              background-color 0.25s ease;
+}
+.field-input:focus {
+  border-color: rgba(223, 178, 108, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(223, 178, 108, 0.10);
+  outline: none;
+}
+[data-theme="light"] .field-input:focus {
+  border-color: rgba(180, 120, 24, 0.50) !important;
+  box-shadow: 0 0 0 3px rgba(180, 120, 24, 0.08);
+}
+
+/* ── Card elevation system (shadow only — no ghost card) ── */
+.card-elevated {
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.22s var(--ease-out-expo), transform 0.22s var(--ease-out-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card-elevated:hover {
+    box-shadow: var(--shadow-float);
+    transform: translateY(-2px);
+  }
+}
+
+/* ── Emil Kowalski Craft Shadows & Interactive Card Utilities ── */
+.shadow-craft-sm {
+  box-shadow: var(--shadow-craft-sm);
+}
+.shadow-craft-md {
+  box-shadow: var(--shadow-craft-md);
+}
+.shadow-craft-lg {
+  box-shadow: var(--shadow-craft-lg);
+}
+.shadow-craft-modal {
+  box-shadow: var(--shadow-craft-modal);
+}
+.shadow-craft-glow {
+  box-shadow: var(--shadow-gold);
+}
+
+.card-craft {
+  box-shadow: var(--shadow-craft-md);
+  transition: transform 180ms var(--ease-out-expo), box-shadow 180ms var(--ease-out-expo), border-color 180ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .card-craft:hover {
+    box-shadow: var(--shadow-craft-lg);
+    transform: translateY(-2px);
+  }
+}
+.card-craft:active {
+  transform: scale(0.99);
+}
+
+.card-craft-subtle {
+  box-shadow: var(--shadow-craft-sm);
+  transition: transform 180ms var(--ease-out-expo), box-shadow 180ms var(--ease-out-expo);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card-craft-subtle:hover {
+    box-shadow: var(--shadow-craft-md);
+    transform: translateY(-1px);
+  }
+}
+.card-craft-subtle:active {
+  transform: scale(0.99);
+}
+
+/* ── Page entry animations ── */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: page-enter 0.45s var(--ease-out-expo) both;
+}
+
+/* Stagger delays */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 50ms; }
+.stagger-3 { animation-delay: 100ms; }
+.stagger-4 { animation-delay: 150ms; }
+.stagger-5 { animation-delay: 200ms; }
+.stagger-6 { animation-delay: 250ms; }
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .animate-fade-up {
+    animation: fade-only 0.25s ease both;
+  }
+  .btn-press:active { transform: none; }
+  .card-elevated:hover { transform: none; }
+}
+@keyframes fade-only {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Feature card hover ── */
+.feature-card {
+  transition: transform 0.22s var(--ease-out-expo), background 0.22s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .feature-card:hover { transform: translateY(-3px); }
+}
+
+/* ── Animate fade-up alias ── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fade-up 0.45s var(--ease-out-expo) both;
+}
+
+/* ── Status badge pulse ── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.status-dot-pulse {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ── Shimmer loading skeleton ── */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--surface-1) 25%,
+    var(--surface-2) 50%,
+    var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ── Tab underline indicator ── */
+.tab-active {
+  position: relative;
+}
+.tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 2px;
+  background: var(--gold);
+  border-radius: 9999px;
+  transition: width 0.22s var(--ease-out-expo);
+}
+.tab-active:hover::after { width: 28px; }
+
+/* ── Gold glow on focus for CTAs ── */
+.btn-gold:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(223, 178, 108, 0.35), var(--shadow-gold);
+}
+[data-theme="light"] .btn-gold:focus-visible {
+  box-shadow: 0 0 0 3px rgba(180, 120, 24, 0.25), var(--shadow-gold);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Emil Kowalski — Craft Shadow System
+   Multi-stop layered shadows: ambient + directional + contact
+   ═══════════════════════════════════════════════════════════════ */
+
+/* CSS Custom Properties for shadow tokens */
+:root {
+  /* Small — for buttons, inputs, pills */
+  --shadow-craft-sm:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.03);
+
+  /* Medium — for cards, panels, sections */
+  --shadow-craft-md:
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 4px 16px rgba(0, 0, 0, 0.07),
+    0 8px 24px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.06) inset;
+
+  /* Large — for elevated containers, drawers */
+  --shadow-craft-lg:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    0 16px 48px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.08) inset;
+
+  /* Modal — dramatic physical float for dialogs */
+  --shadow-craft-modal:
+    0 4px 6px rgba(0, 0, 0, 0.07),
+    0 12px 32px rgba(0, 0, 0, 0.14),
+    0 32px 80px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.10) inset;
+}
+
+/* Dark mode overrides — shadows more visible against dark surfaces */
+[data-theme="dark"],
+.dark {
+  --shadow-craft-sm:
+    0 1px 2px rgba(0, 0, 0, 0.20),
+    0 2px 8px rgba(0, 0, 0, 0.24),
+    0 4px 12px rgba(0, 0, 0, 0.14),
+    0 0 0 0.5px rgba(255, 255, 255, 0.04) inset;
+
+  --shadow-craft-md:
+    0 1px 3px rgba(0, 0, 0, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.28),
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
+
+  --shadow-craft-lg:
+    0 2px 4px rgba(0, 0, 0, 0.30),
+    0 8px 24px rgba(0, 0, 0, 0.34),
+    0 16px 48px rgba(0, 0, 0, 0.24),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+
+  --shadow-craft-modal:
+    0 4px 6px rgba(0, 0, 0, 0.36),
+    0 12px 32px rgba(0, 0, 0, 0.48),
+    0 32px 80px rgba(0, 0, 0, 0.40),
+    0 0 0 0.5px rgba(255, 255, 255, 0.07) inset;
+}
+
+/* Utility classes — use these in JSX className strings */
+.shadow-craft-sm  { box-shadow: var(--shadow-craft-sm); }
+.shadow-craft-md  { box-shadow: var(--shadow-craft-md); }
+.shadow-craft-lg  { box-shadow: var(--shadow-craft-lg); }
+.shadow-craft-modal { box-shadow: var(--shadow-craft-modal); }
+
+/* Card helper — medium shadow + hover lift */
+.card-craft {
+  box-shadow: var(--shadow-craft-md);
+  transition: box-shadow 0.22s ease, transform 0.18s ease;
+  will-change: transform, box-shadow;
+}
+.card-craft:hover {
+  box-shadow: var(--shadow-craft-lg);
+  transform: translateY(-1px);
+}
+.card-craft:active {
+  box-shadow: var(--shadow-craft-sm);
+  transform: translateY(0);
+}
+
+/* Subtle card — small shadow + minimal hover lift */
+.card-craft-subtle {
+  box-shadow: var(--shadow-craft-sm);
+  transition: box-shadow 0.20s ease;
+}
+.card-craft-subtle:hover {
+  box-shadow: var(--shadow-craft-md);
+}

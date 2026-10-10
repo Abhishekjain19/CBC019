@@ -1,0 +1,51 @@
+got_requirements.txt
+
+1
+
+Set up Neon with your coding agent
+Paste the following prompt into your agent chat to connect your app.
+
+Set up this Neon project in the current working directory.
+
+1. `npm i -g neon@latest && neon login`
+2. `neon skills -y`
+3. `neon mcp -y`
+4. `neon link --project-id polished-cherry-69779733 --branch production -y`
+5. `neon config init`
+6. Update `neon.ts`:
+
+```ts
+import { defineConfig } from "@neon/config/v1";
+
+export default defineConfig({
+  auth: true,
+});
+```
+
+7. `neon deploy`
+
+
+2 Connect to your branch
+branch , production
+
+
+[DATABASE_URL REDACTED]
+
+
+3. Gemini API key
+
+[GEMINI_API_KEY REDACTED]
+
+
+4 USING NEON AUTH INSTEAD OF BETTER AUTH
+
+NEON Auth
+
+auth url       https://ep-shiny-sound-b5y62lzb.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth
+jwks url       https://ep-shiny-sound-b5y62lzb.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json
+
+
+ORS_API_KEY=
+Basic key   [ORS_KEY_REDACTED]
+
+

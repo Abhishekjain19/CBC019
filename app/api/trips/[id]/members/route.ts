@@ -1,0 +1,67 @@
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { tripMember } from "@/db/schema";
+import { resolveTripRecord } from "@/lib/trips-db";
+import { eq, and } from "drizzle-orm";
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: tripId } = await params;
+    const body = await req.json();
+    const { userId, role = "member" } = body;
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    }
+
+    const tripRecord = await resolveTripRecord(tripId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+    }
+
+    const [member] = await db
+      .insert(tripMember)
+      .values({
+        tripId: tripRecord.id,
+        userId,
+        role,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    return NextResponse.json({ success: true, member });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to add member" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: tripId } = await params;
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get("userId");
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    }
+
+    const tripRecord = await resolveTripRecord(tripId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+    }
+
+    await db
+      .delete(tripMember)
+      .where(and(eq(tripMember.tripId, tripRecord.id), eq(tripMember.userId, userId)));
+
+    return NextResponse.json({ success: true, deletedUserId: userId });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to remove member" }, { status: 500 });
+  }
+}
