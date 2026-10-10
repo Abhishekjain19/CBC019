@@ -170,7 +170,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
   // Live Party Member Locations State & Broadcasting
   const [liveMemberLocations, setLiveMemberLocations] = useState<Record<string, { lat: number; lng: number }>>({});
 
-  // 1. Broadcast current user's GPS coordinates to server
+  // 1. Broadcast current user's GPS coordinates to server every 3 minutes
   useEffect(() => {
     if (!userLocation || !tripId) return;
 
@@ -187,11 +187,11 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     };
 
     broadcastLocation();
-    const interval = setInterval(broadcastLocation, 8000);
+    const interval = setInterval(broadcastLocation, 180000); // 3 minutes
     return () => clearInterval(interval);
   }, [userLocation?.lat, userLocation?.lng, tripId]);
 
-  // 2. Poll live locations of all party members (passcode joinees + organizer)
+  // 2. Poll live locations of all party members (passcode joinees + organizer) every 3 minutes
   useEffect(() => {
     if (!tripId) return;
 
@@ -216,7 +216,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     };
 
     fetchMemberLocations();
-    const interval = setInterval(fetchMemberLocations, 5000);
+    const interval = setInterval(fetchMemberLocations, 180000); // 3 minutes
     return () => clearInterval(interval);
   }, [tripId]);
 

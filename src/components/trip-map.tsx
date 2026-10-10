@@ -810,10 +810,11 @@ export default function TripMap({
       <div ref={mapContainer} className="w-full h-full min-h-[420px]" />
 
       {/* Top Controls Overlay */}
-      <div className="absolute top-3 left-3 right-3 z-20 flex items-center justify-between gap-2 pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2">
+      <div className="absolute top-3 left-3 right-3 z-20 flex items-center justify-between flex-wrap gap-2 pointer-events-none">
+        {/* Left side controls */}
+        <div className="pointer-events-auto flex items-center flex-wrap gap-2">
           {subItineraryTitle ? (
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-black/85 border border-[var(--gold)]/40 text-xs font-semibold text-white shadow-xl backdrop-blur-md">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-black/85 border border-[var(--gold)]/40 text-xs font-semibold text-white shadow-xl backdrop-blur-md">
               <Sparkles className="w-3.5 h-3.5 text-[var(--gold)] animate-pulse" />
               <span>Sub-Itinerary: <strong className="text-[var(--gold)]">{subItineraryTitle}</strong></span>
               {onClearSubItinerary && (
@@ -827,7 +828,7 @@ export default function TripMap({
               )}
             </div>
           ) : (
-            <div className="px-3 py-1.5 rounded-xl bg-black/75 border border-white/10 text-xs text-zinc-300 backdrop-blur-md flex items-center gap-1.5 font-medium">
+            <div className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/15 text-xs text-zinc-200 backdrop-blur-md flex items-center gap-1.5 font-medium shadow-md">
               <MapPin className="w-3.5 h-3.5 text-[var(--gold)]" />
               <span>{destination} • {places.length} Stops</span>
             </div>
@@ -837,7 +838,7 @@ export default function TripMap({
             <button
               type="button"
               onClick={fitItineraryBounds}
-              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/20 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/15 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
               title="Fit map view to all trip itinerary stops"
             >
               <Compass className="w-3.5 h-3.5 text-[var(--gold)]" />
@@ -849,39 +850,45 @@ export default function TripMap({
             <button
               type="button"
               onClick={recenterUser}
-              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/20 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              className="px-3 py-1.5 rounded-xl bg-black/80 border border-white/15 text-xs text-white font-medium hover:bg-black backdrop-blur-md flex items-center gap-1.5 shadow-md transition-all active:scale-95"
               title="Focus on my location"
             >
               <Navigation className="w-3.5 h-3.5 text-sky-400" />
               <span className="hidden sm:inline">My Location</span>
             </button>
           )}
+
+          <div className="px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-[11px] text-emerald-400 font-semibold backdrop-blur-md flex items-center gap-1.5 shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span>Live Sync (3m)</span>
+          </div>
         </div>
 
+        {/* Right side navigation toggle */}
         <div className="pointer-events-auto flex items-center gap-2">
           {!isLiveNav ? (
             <button
               onClick={() => setIsLiveNav(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all active:scale-95 bg-[var(--gold)] text-black border border-[var(--gold)] hover:bg-[#ebd2a0]"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-2xl transition-all active:scale-95 bg-[var(--gold)] text-black border border-[var(--gold)] hover:bg-[#ebd2a0]"
             >
               <Play className="w-3.5 h-3.5 fill-black" />
-              <span>Go Live (In-App Navigation)</span>
+              <span>Go Live</span>
             </button>
           ) : (
             <button
               onClick={() => setIsLiveNav(false)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-red-600/90 text-white shadow-xl backdrop-blur-md border border-red-500 hover:bg-red-700 transition-all active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-red-600/90 text-white shadow-xl backdrop-blur-md border border-red-500 hover:bg-red-700 transition-all active:scale-95"
             >
               <X className="w-3.5 h-3.5" />
-              <span>Exit Live Navigation</span>
+              <span>Exit Live</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* GOOGLE MAPS STYLE TOP CATEGORY FILTER BAR */}
+      {/* GOOGLE MAPS STYLE TOP CATEGORY FILTER BAR (HORIZONTAL SCROLLBAR COMPLETELY REMOVED) */}
       {!isLiveNav && (
-        <div className="absolute top-14 left-3 right-3 z-20 flex items-center gap-2 overflow-x-auto pb-1 pointer-events-auto no-scrollbar">
+        <div className="absolute top-14 left-3 right-3 z-20 flex items-center gap-2 overflow-x-auto pb-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {[
             { id: "restaurant", label: "Restaurants", icon: "🍽️" },
             { id: "hotel", label: "Hotels", icon: "🏨" },
@@ -897,7 +904,7 @@ export default function TripMap({
                   setSelectedPoi(null);
                   setActivePoiCategory((prev) => (prev === cat.id ? "none" : (cat.id as any)));
                 }}
-                className={`btn-press px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-md shrink-0 backdrop-blur-md ${
+                className={`btn-press px-3.5 py-1 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-md shrink-0 backdrop-blur-md ${
                   isActive
                     ? "bg-[var(--gold)] text-black border-[var(--gold)] shadow-lg shadow-[var(--gold)]/30 font-bold scale-105"
                     : "bg-black/80 text-white border-white/20 hover:bg-black/95 hover:border-white/40"
@@ -916,7 +923,7 @@ export default function TripMap({
                 setActivePoiCategory("none");
                 setSelectedPoi(null);
               }}
-              className="btn-press px-2.5 py-1.5 rounded-full text-[11px] font-medium bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 transition shrink-0 backdrop-blur-md"
+              className="btn-press px-2.5 py-1 rounded-full text-[11px] font-medium bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 transition shrink-0 backdrop-blur-md"
             >
               Clear POIs ✕
             </button>
