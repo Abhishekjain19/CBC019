@@ -47,6 +47,9 @@ export const tripMember = pgTable("trip_member", {
   tripId: uuid("trip_id").references(() => trip.id).notNull(),
   userId: varchar("user_id", { length: 255 }).notNull(),
   role: varchar("role", { length: 50 }).default("member").notNull(), // owner, member
+  latitude: text("latitude"),
+  longitude: text("longitude"),
+  lastLocationAt: timestamp("last_location_at"),
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
   removedAt: timestamp("removed_at"),
 }, (table) => [

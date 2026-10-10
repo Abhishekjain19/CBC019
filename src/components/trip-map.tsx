@@ -511,19 +511,26 @@ export default function TripMap({
       }
     });
 
-    // Add Trip Member (People) Markers
-    members.forEach((m, idx) => {
-      const mLat = m.latitude ?? (validCoords[idx]?.[1] ? validCoords[idx][1] + 0.003 * (idx + 1) : null);
-      const mLng = m.longitude ?? (validCoords[idx]?.[0] ? validCoords[idx][0] + 0.003 * (idx + 1) : null);
+    // Add Trip Member (People) Live Markers
+    members.forEach((m) => {
+      const mLat = m.latitude;
+      const mLng = m.longitude;
 
-      if (mLat && mLng) {
+      if (mLat !== undefined && mLng !== undefined && !isNaN(mLat) && !isNaN(mLng)) {
+        const isOrganizer = m.role === "owner";
+        const initial = (m.displayName.charAt(0) || "M").toUpperCase();
+
         const memberEl = document.createElement("div");
-        memberEl.className = "flex items-center gap-1.5 px-2 py-1 bg-black/90 border border-[var(--gold)]/60 text-white rounded-full text-xs font-bold shadow-xl backdrop-blur-md";
+        memberEl.className = "group relative cursor-pointer flex items-center gap-1.5 px-2.5 py-1 bg-zinc-950/95 border border-emerald-500/60 text-white rounded-full text-xs font-bold shadow-2xl backdrop-blur-md transition-all hover:scale-110 hover:z-30";
         memberEl.innerHTML = `
-          <div class="w-5 h-5 rounded-full bg-[var(--gold)] text-black flex items-center justify-center text-[10px] font-black shrink-0">
-            ${m.displayName.charAt(0).toUpperCase()}
+          <div class="relative flex items-center justify-center">
+            <span class="absolute w-full h-full rounded-full bg-emerald-400/40 animate-ping"></span>
+            <div class="w-5 h-5 rounded-full ${isOrganizer ? "bg-[var(--gold)] text-black" : "bg-emerald-400 text-black"} flex items-center justify-center text-[10px] font-black shrink-0 shadow">
+              ${initial}
+            </div>
           </div>
-          <span class="max-w-[80px] truncate text-[11px] text-zinc-100">${m.displayName.split(" ")[0]}</span>
+          <span class="max-w-[90px] truncate text-[11px] text-zinc-100 font-semibold">${m.displayName.split(" ")[0]}</span>
+          ${isOrganizer ? `<span class="text-[9px] text-[var(--gold)] font-black uppercase tracking-wider">Host</span>` : `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>`}
         `;
 
         const mMarker = new maplibregl.Marker({ element: memberEl })

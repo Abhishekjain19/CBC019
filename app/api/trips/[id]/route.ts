@@ -134,6 +134,9 @@ export async function GET(
         tripId: tripRecord.id,
         userId: tripRecord.ownerId,
         role: "owner",
+        latitude: null,
+        longitude: null,
+        lastLocationAt: null,
         joinedAt: new Date(),
         removedAt: null,
       });

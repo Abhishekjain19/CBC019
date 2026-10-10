@@ -106,6 +106,8 @@ interface TripMember {
   displayName: string;
   email?: string;
   role: "owner" | "member" | "viewer" | "co-planner";
+  latitude?: number;
+  longitude?: number;
 }
 
 interface NavigationInfo {
@@ -146,7 +148,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [userLocationError, setUserLocationError] = useState<string | null>(null);
 
-  // Request user location on mount
+  // Request user location on mount & watch continuous position for live sharing
   useEffect(() => {
     if (typeof window !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -154,8 +156,83 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
         () => setUserLocationError("Location not available — using itinerary start point."),
         { enableHighAccuracy: true, timeout: 8000 }
       );
+
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.warn("Watch position error:", err.message),
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
+
+      return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
+
+  // Live Party Member Locations State & Broadcasting
+  const [liveMemberLocations, setLiveMemberLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+
+  // 1. Broadcast current user's GPS coordinates to server
+  useEffect(() => {
+    if (!userLocation || !tripId) return;
+
+    const broadcastLocation = async () => {
+      try {
+        await fetch(`/api/trips/${tripId}/location`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ latitude: userLocation.lat, longitude: userLocation.lng }),
+        });
+      } catch (e) {
+        console.warn("Failed to broadcast location:", e);
+      }
+    };
+
+    broadcastLocation();
+    const interval = setInterval(broadcastLocation, 8000);
+    return () => clearInterval(interval);
+  }, [userLocation?.lat, userLocation?.lng, tripId]);
+
+  // 2. Poll live locations of all party members (passcode joinees + organizer)
+  useEffect(() => {
+    if (!tripId) return;
+
+    const fetchMemberLocations = async () => {
+      try {
+        const res = await fetch(`/api/trips/${tripId}/location`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.members)) {
+            const locMap: Record<string, { lat: number; lng: number }> = {};
+            data.members.forEach((m: any) => {
+              if (m.userId && m.latitude !== undefined && m.longitude !== undefined) {
+                locMap[m.userId] = { lat: m.latitude, lng: m.longitude };
+              }
+            });
+            setLiveMemberLocations(locMap);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch member locations:", e);
+      }
+    };
+
+    fetchMemberLocations();
+    const interval = setInterval(fetchMemberLocations, 5000);
+    return () => clearInterval(interval);
+  }, [tripId]);
+
+  // Merge party members with their live GPS locations for TripMap
+  const mapMembers = useMemo(() => {
+    return members.map((m) => {
+      const liveLoc = liveMemberLocations[m.userId];
+      return {
+        userId: m.userId,
+        displayName: m.displayName,
+        role: m.role,
+        latitude: liveLoc ? liveLoc.lat : m.latitude,
+        longitude: liveLoc ? liveLoc.lng : m.longitude,
+      };
+    });
+  }, [members, liveMemberLocations]);
 
   // Calculate dynamic days from trip start & end dates + stops
   const tripDays: number[] = useMemo(() => {
@@ -1728,7 +1805,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                         };
                       })}
                       destination={trip.destination}
-                      members={members}
+                      members={mapMembers}
                       subItineraryTitle={activeSubItinerary?.title}
                       onClearSubItinerary={() => setActiveSubItineraryId(null)}
                       userInitialCoords={userLocation ? [userLocation.lng, userLocation.lat] : undefined}
