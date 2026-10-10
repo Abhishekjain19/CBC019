@@ -26,7 +26,7 @@ export const trip = pgTable("trip", {
   dailyEnd: text("daily_end").default("21:00").notNull(),
   transportMode: varchar("transport_mode", { length: 50 }).default("driving").notNull(),
   budgetPaise: integer("budget_paise").default(0).notNull(), // stored in integer paise
-  status: varchar("status", { length: 50 }).default("planning").notNull(), // planning, confirmed, archived
+  status: varchar("status", { length: 50 }).default("planning").notNull(), // planning, confirmed, live, completed, archived
   joinCode: varchar("join_code", { length: 8 }).unique(), // 8-char secure code
   version: integer("version").default(1).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

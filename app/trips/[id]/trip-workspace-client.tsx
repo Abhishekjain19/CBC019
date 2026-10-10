@@ -78,25 +78,7 @@ interface PlaceItem {
   popularityScore?: number;
 }
 
-const SUGGESTED_EXTRA_PLACES: Record<string, PlaceItem[]> = {
-  Goa: [
-    { id: "sug-goa-1", name: "Butterfly Beach", category: "beach", destination: "Goa", latitude: "15.0064", longitude: "74.0289", openingHours: "06:00 - 18:30", hoursConfidence: "verified", description: "Secluded cove with pristine sands, dolphin spotting, and lush greenery.", popularityScore: 94 },
-    { id: "sug-goa-2", name: "Chapora Fort & Sunset Point", category: "heritage", destination: "Goa", latitude: "15.6053", longitude: "73.7364", openingHours: "09:00 - 18:00", hoursConfidence: "verified", description: "Famous cliffside fort featured in Dil Chahta Hai with panoramic ocean sunset views.", popularityScore: 92 },
-    { id: "sug-goa-3", name: "Fontainhas Latin Quarter", category: "heritage", destination: "Goa", latitude: "15.4989", longitude: "73.8322", openingHours: "08:00 - 20:00", hoursConfidence: "verified", description: "Vibrant Portuguese colonial architecture, narrow cobblestone streets, and cozy cafes.", popularityScore: 90 },
-    { id: "sug-goa-4", name: "Dudhsagar Waterfalls Trail", category: "nature", destination: "Goa", latitude: "15.3144", longitude: "74.3144", openingHours: "07:00 - 16:30", hoursConfidence: "verified", description: "Four-tiered majestic waterfall in Bhagwan Mahaveer Sanctuary reachable by jeep safari.", popularityScore: 96 },
-    { id: "sug-goa-5", name: "Arambol Sweet Water Lake", category: "nature", destination: "Goa", latitude: "15.6881", longitude: "73.7022", openingHours: "07:00 - 19:00", hoursConfidence: "verified", description: "Freshwater lagoon surrounded by hills and banyan trees just steps from Arambol beach.", popularityScore: 88 },
-  ],
-  Coorg: [
-    { id: "sug-coorg-1", name: "Abbey Falls & Coffee Estate", category: "nature", destination: "Coorg", latitude: "12.4578", longitude: "75.7197", openingHours: "09:00 - 17:00", hoursConfidence: "verified", description: "Cascading waterfall nestled inside aromatic coffee plantations and spice gardens.", popularityScore: 93 },
-    { id: "sug-coorg-2", name: "Raja's Seat Sunset Viewpoint", category: "viewpoint", destination: "Coorg", latitude: "12.4172", longitude: "75.7388", openingHours: "06:00 - 20:00", hoursConfidence: "verified", description: "Historic garden with sweeping valley views and musical fountain shows at dusk.", popularityScore: 89 },
-    { id: "sug-coorg-3", name: "Bypass Dubare Elephant Camp", category: "nature", destination: "Coorg", latitude: "12.3686", longitude: "75.9056", openingHours: "09:00 - 16:30", hoursConfidence: "verified", description: "Riverside elephant sanctuary along Kaveri river with bathing and feeding activities.", popularityScore: 91 },
-  ],
-  Hampi: [
-    { id: "sug-hampi-1", name: "Vittala Temple Stone Chariot", category: "heritage", destination: "Hampi", latitude: "15.3350", longitude: "76.4764", openingHours: "08:30 - 17:30", hoursConfidence: "verified", description: "Iconic UNESCO World Heritage monument with musical pillars and intricate stone carving.", popularityScore: 98 },
-    { id: "sug-hampi-2", name: "Matanga Hill Sunrise Point", category: "viewpoint", destination: "Hampi", latitude: "15.3317", longitude: "76.4678", openingHours: "05:30 - 18:30", hoursConfidence: "verified", description: "Highest peak in Hampi offering 360-degree panoramic views of boulder landscapes.", popularityScore: 95 },
-    { id: "sug-hampi-3", name: "Lotus Mahal & Elephant Stables", category: "heritage", destination: "Hampi", latitude: "15.3183", longitude: "76.4692", openingHours: "08:00 - 18:00", hoursConfidence: "verified", description: "Indo-Islamic architectural masterpiece within the Zenana Enclosure.", popularityScore: 91 },
-  ],
-};
+// No hardcoded place data — all suggestions are fetched live from the database and AI API
 
 
 interface ExpenseItem {
@@ -154,6 +136,8 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [statusUpdateMsg, setStatusUpdateMsg] = useState<string | null>(null);
 
   // Calculate dynamic days from trip start & end dates + stops
   const tripDays: number[] = useMemo(() => {
@@ -233,38 +217,81 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
   const [isSuggestingAIPlaces, setIsSuggestingAIPlaces] = useState(false);
   const [aiSuggestionSuccessMsg, setAiSuggestionSuccessMsg] = useState<string | null>(null);
 
-  // AI Suggest Locations for destination
+  // AI Suggest Locations for destination — fetches live from DB + AI API
   const handleGenerateAISuggestions = async () => {
     setIsSuggestingAIPlaces(true);
     setAiSuggestionSuccessMsg(null);
     try {
-      const destination = trip?.destination || "Goa";
-      await fetch("/api/itinerary/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination,
-          tripType: trip?.type || "group",
-          daysCount: 3,
-        }),
+      const destination = trip?.destination || "";
+
+      // 1. Fetch all places for this destination from the DB
+      const dbRes = await fetch(`/api/places?destination=${encodeURIComponent(destination)}`);
+      let dbPlaces: PlaceItem[] = [];
+      if (dbRes.ok) {
+        const dbData = await dbRes.json();
+        if (Array.isArray(dbData.places)) dbPlaces = dbData.places;
+      }
+
+      // 2. Also call the AI itinerary generate endpoint for enhanced suggestions
+      let aiSuggestions: PlaceItem[] = [];
+      try {
+        const aiRes = await fetch("/api/itinerary/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination,
+            tripType: trip?.type || "group",
+            daysCount: tripDays.length || 3,
+          }),
+        });
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          // Extract unique places from AI itinerary response
+          if (aiData.itinerary && Array.isArray(aiData.itinerary)) {
+            aiData.itinerary.forEach((dayObj: any) => {
+              if (dayObj.stops && Array.isArray(dayObj.stops)) {
+                dayObj.stops.forEach((s: any) => {
+                  if (s.placeId && s.name) {
+                    aiSuggestions.push({
+                      id: s.placeId,
+                      name: s.name,
+                      category: s.category || "attraction",
+                      destination,
+                      openingHours: s.openingHours || "09:00 - 18:00",
+                      hoursConfidence: "AI Suggested",
+                      description: s.notes || `AI-recommended place for ${destination}.`,
+                      popularityScore: s.popularityScore || 90,
+                    });
+                  }
+                });
+              }
+            });
+          }
+        }
+      } catch { /* AI call optional */ }
+
+      // 3. Merge: DB places first (authoritative), then AI suggestions not already in DB
+      const allSuggestions = [...dbPlaces];
+      const existingIds = new Set(dbPlaces.map((p) => p.id));
+      aiSuggestions.forEach((s) => {
+        if (!existingIds.has(s.id)) {
+          allSuggestions.push(s);
+          existingIds.add(s.id);
+        }
       });
 
-      const extraSuggestions: PlaceItem[] = [
-        { id: `ai-place-1-${Date.now()}`, name: `${destination} Heritage Villa & Botanical Gardens`, category: "heritage", destination, openingHours: "08:30 - 18:30", hoursConfidence: "AI Verified", description: `Historic estate surrounded by lush tropical gardens, art galleries and tea rooms in ${destination}.`, popularityScore: 96 },
-        { id: `ai-place-2-${Date.now()}`, name: `Sunset Cliff Viewpoint ${destination}`, category: "viewpoint", destination, openingHours: "06:00 - 19:30", hoursConfidence: "AI Verified", description: `Unmatched 360-degree panoramic ocean sunset views and cliffside photo spots.`, popularityScore: 97 },
-        { id: `ai-place-3-${Date.now()}`, name: `${destination} Hidden Waterfalls Trail`, category: "nature", destination, openingHours: "07:00 - 17:00", hoursConfidence: "AI Verified", description: `Secluded natural freshwater cascade hidden within tropical jungle trails.`, popularityScore: 94 },
-        { id: `ai-place-4-${Date.now()}`, name: `Old Town Artisanal Street & Cafes`, category: "heritage", destination, openingHours: "10:00 - 21:00", hoursConfidence: "AI Verified", description: `Charming cobblestone alleyways filled with craft boutiques, bakeries and local cafes.`, popularityScore: 93 },
-      ];
-
-      setPlaces((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const fresh = extraSuggestions.filter((s) => !existingIds.has(s.id));
-        return [...fresh, ...prev];
-      });
-
-      setAiSuggestionSuccessMsg(`✓ AI engine generated 4 new personalized location recommendations for ${destination}!`);
+      if (allSuggestions.length > 0) {
+        setPlaces((prev) => {
+          const prevIds = new Set(prev.map((p) => p.id));
+          const fresh = allSuggestions.filter((s) => !prevIds.has(s.id));
+          return [...fresh, ...prev];
+        });
+        setAiSuggestionSuccessMsg(`✓ Found ${allSuggestions.length} recommended places for ${destination} from our database.`);
+      } else {
+        setAiSuggestionSuccessMsg(`No additional places found in the database for ${destination}. Try adding places via the admin panel.`);
+      }
     } catch {
-      setAiSuggestionSuccessMsg(`✓ Fresh AI location suggestions added for ${trip?.destination || "destination"}.`);
+      setAiSuggestionSuccessMsg(`Could not fetch suggestions. Please check your connection.`);
     } finally {
       setIsSuggestingAIPlaces(false);
     }
@@ -1064,6 +1091,48 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  // Trip Status Lifecycle Handler
+  const TRIP_STATUS_FLOW = ["planning", "confirmed", "live", "completed", "archived"] as const;
+  type TripStatus = typeof TRIP_STATUS_FLOW[number];
+
+  const STATUS_META: Record<TripStatus, { label: string; color: string; bg: string; next?: TripStatus; nextLabel?: string; icon: string }> = {
+    planning: { label: "Planning", color: "text-blue-500", bg: "bg-blue-500/15 border-blue-500/40", next: "confirmed", nextLabel: "Confirm Trip", icon: "📋" },
+    confirmed: { label: "Confirmed", color: "text-emerald-500", bg: "bg-emerald-500/15 border-emerald-500/40", next: "live", nextLabel: "Start Live Trip", icon: "✅" },
+    live: { label: "Live 🔴", color: "text-red-500", bg: "bg-red-500/15 border-red-500/40", next: "completed", nextLabel: "Complete Trip", icon: "🔴" },
+    completed: { label: "Completed", color: "text-purple-500", bg: "bg-purple-500/15 border-purple-500/40", next: "archived", nextLabel: "Archive Trip", icon: "🏁" },
+    archived: { label: "Archived", color: "text-[var(--foreground)]/40", bg: "bg-[var(--muted)] border-[var(--foreground)]/20", icon: "📁" },
+  };
+
+  const handleUpdateTripStatus = async (newStatus: TripStatus) => {
+    setIsUpdatingStatus(true);
+    setStatusUpdateMsg(null);
+    // Optimistic update
+    setTrip((prev: any) => ({ ...prev, status: newStatus }));
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTrip((prev: any) => ({ ...prev, status: data.status }));
+        const meta = STATUS_META[newStatus];
+        setStatusUpdateMsg(`${meta.icon} Trip status updated to "${meta.label}"`);
+      } else {
+        // Revert on failure
+        const data = await res.json();
+        setStatusUpdateMsg(`Failed: ${data.error || "Could not update status"}`);
+      }
+    } catch {
+      setStatusUpdateMsg("Network error. Status may not have saved.");
+    } finally {
+      setIsUpdatingStatus(false);
+      setTimeout(() => setStatusUpdateMsg(null), 4000);
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -1158,52 +1227,141 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
         </div>
       </header>
 
-      {/* Clean Executive Trip Summary Banner (No partially hidden background image) */}
+      {/* Executive Trip Summary Banner + Status Lifecycle Panel */}
       <div className="shadow-craft-sm border-none bg-[var(--card)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-7">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-            <div>
-              <div className="flex items-center gap-2.5 text-xs text-[var(--gold)] font-medium mb-1.5 flex-wrap">
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {trip.destination}, India
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {trip.startDate} – {trip.endDate}
-                </span>
-                <span>•</span>
-                <span className="capitalize">{trip.type} Expedition</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
+          <div className="flex flex-col gap-5">
+            {/* Row 1: Title + Quick Stats */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5 text-xs text-[var(--gold)] font-medium mb-1.5 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {trip.destination}, India
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {trip.startDate} – {trip.endDate}
+                  </span>
+                  <span>•</span>
+                  <span className="capitalize">{trip.type} Expedition</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-serif font-extrabold text-[var(--foreground)] tracking-tight">
+                  {trip.name || `${trip.destination} Journey`}
+                </h1>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-serif font-extrabold text-[var(--foreground)] tracking-tight">
-                {trip.name || `${trip.destination} Journey`}
-              </h1>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Trip Budget</span>
+                  <span className="text-sm font-bold font-mono text-[var(--gold)]">
+                    ₹{((trip.budgetPaise || 0) / 100).toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Travellers</span>
+                  <span className="text-sm font-bold font-mono text-[var(--foreground)]">
+                    {members.length} {members.length === 1 ? "Person" : "Persons"}
+                  </span>
+                </div>
+                <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Planned Stops</span>
+                  <span className="text-sm font-bold font-mono text-emerald-500">
+                    {stops.length} Stops
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
-                <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Trip Budget</span>
-                <span className="text-sm font-bold font-mono text-[var(--gold)]">
-                  ₹{((trip.budgetPaise || 0) / 100).toLocaleString("en-IN")}
-                </span>
+            {/* Row 2: Trip Status Lifecycle Control */}
+            {(() => {
+              const currentStatus = (trip.status || "planning") as TripStatus;
+              const currentMeta = STATUS_META[currentStatus];
+              const nextStatus = currentMeta.next as TripStatus | undefined;
+              const nextMeta = nextStatus ? STATUS_META[nextStatus] : null;
+
+              return (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[var(--background)] border border-[var(--foreground)]/10">
+                  {/* Phase Steps */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {TRIP_STATUS_FLOW.map((phase, idx) => {
+                      const phaseMeta = STATUS_META[phase];
+                      const statusOrder = TRIP_STATUS_FLOW.indexOf(currentStatus);
+                      const isActive = phase === currentStatus;
+                      const isPast = idx < statusOrder;
+                      const isFuture = idx > statusOrder;
+                      return (
+                        <div key={phase} className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleUpdateTripStatus(phase)}
+                            disabled={isUpdatingStatus || phase === currentStatus}
+                            title={`Jump to ${phaseMeta.label}`}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                              isActive
+                                ? `${phaseMeta.bg} ${phaseMeta.color} border-current scale-105 shadow-sm`
+                                : isPast
+                                ? "bg-[var(--card)] text-[var(--foreground)]/40 border-[var(--foreground)]/15 hover:bg-[var(--muted)] cursor-pointer"
+                                : "bg-[var(--card)] text-[var(--foreground)]/30 border-[var(--foreground)]/10 hover:bg-[var(--muted)] cursor-pointer"
+                            } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
+                          >
+                            {phaseMeta.icon} {phaseMeta.label}
+                          </button>
+                          {idx < TRIP_STATUS_FLOW.length - 1 && (
+                            <span className={`text-[10px] ${isPast ? "text-[var(--foreground)]/30" : "text-[var(--foreground)]/15"}`}>›</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* CTA: Advance to Next Phase */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {nextStatus && nextMeta && (
+                      <button
+                        onClick={() => handleUpdateTripStatus(nextStatus)}
+                        disabled={isUpdatingStatus}
+                        className={`btn-press px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
+                          nextStatus === "live"
+                            ? "bg-red-500 text-white border-red-600 hover:bg-red-600"
+                            : nextStatus === "confirmed"
+                            ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600"
+                            : "bg-[var(--gold)] text-black border-[var(--gold)] hover:brightness-105"
+                        } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
+                      >
+                        {isUpdatingStatus ? (
+                          <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5" />
+                        )}
+                        <span>{nextMeta.nextLabel || `Move to ${nextMeta.label}`}</span>
+                      </button>
+                    )}
+                    {currentStatus === "live" && (
+                      <div className="flex items-center gap-1.5 text-red-500 text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        Trip is Live
+                      </div>
+                    )}
+                    {currentStatus === "archived" && (
+                      <span className="text-xs text-[var(--foreground)]/40 italic">This trip is archived.</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Status Update Toast */}
+            {statusUpdateMsg && (
+              <div className="px-4 py-2.5 rounded-xl bg-[var(--gold)]/10 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-medium flex items-center gap-2 animate-[fadeIn_0.3s_ease]">
+                <span>{statusUpdateMsg}</span>
+                <button onClick={() => setStatusUpdateMsg(null)} className="ml-auto opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
               </div>
-              <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
-                <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Travellers</span>
-                <span className="text-sm font-bold font-mono text-[var(--foreground)]">
-                  {members.length} {members.length === 1 ? "Person" : "Persons"}
-                </span>
-              </div>
-              <div className="px-3.5 py-2 rounded-xl bg-[var(--background)] card-craft-subtle border-none">
-                <span className="text-[10px] uppercase tracking-wider text-[var(--foreground)]/40 block">Planned Stops</span>
-                <span className="text-sm font-bold font-mono text-emerald-500">
-                  {stops.length} Stops
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
+
 
       {/* Main Workspace Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -1875,7 +2033,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
               })}
             </div>
 
-            {/* FIND MORE PLACES SECTION */}
+            {/* FIND MORE PLACES SECTION - Live DB data */}
             <div className="pt-8 border-t border-[var(--border)]/40 space-y-4">
               <div>
                 <h3 className="text-base font-serif font-bold text-[var(--foreground)] flex items-center gap-2">
@@ -1887,22 +2045,49 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                 </p>
               </div>
 
+              {/* AI discover banner */}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[var(--gold)]/[0.07] border border-[var(--gold)]/25">
+                <div className="text-xs text-[var(--foreground)]/70">
+                  <span className="text-[var(--gold)] font-semibold">AI Discover:</span>{" "}
+                  Search our curated database + AI engine for more {trip?.destination} places to visit.
+                </div>
+                <button
+                  onClick={handleGenerateAISuggestions}
+                  disabled={isSuggestingAIPlaces}
+                  className="btn-press shrink-0 px-3.5 py-2 rounded-xl bg-[var(--gold)] text-black text-xs font-bold flex items-center gap-1.5 hover:brightness-105 transition-all"
+                >
+                  {isSuggestingAIPlaces ? (
+                    <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSuggestingAIPlaces ? "Discovering..." : "Discover More"}</span>
+                </button>
+              </div>
+
+              {aiSuggestionSuccessMsg && (
+                <div className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                  {aiSuggestionSuccessMsg}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {(() => {
-                  const destinationSuggestions = SUGGESTED_EXTRA_PLACES[trip?.destination] || SUGGESTED_EXTRA_PLACES["Goa"];
-                  const unaddedSuggestions = destinationSuggestions.filter(
-                    (sug) => !places.some((p) => p.id === sug.id || p.name.toLowerCase() === sug.name.toLowerCase())
-                  );
+                  // Show places from DB that haven't been added as stops yet
+                  const usedPlaceIds = new Set(stops.map((s) => s.placeId));
+                  const unaddedPlaces = places.filter((p) => !usedPlaceIds.has(p.id));
 
-                  if (unaddedSuggestions.length === 0) {
+                  if (unaddedPlaces.length === 0) {
                     return (
                       <div className="col-span-3 p-6 rounded-2xl bg-[var(--card)] card-craft text-center text-xs text-[var(--foreground)]/50">
-                        ✓ You have added all suggested places to your Place Discovery list!
+                        {places.length > 0
+                          ? "✓ All discovered places have been added to your itinerary stops!"
+                          : `No places found in database for ${trip?.destination}. Click "Discover More" above to fetch suggestions.`}
                       </div>
                     );
                   }
 
-                  return unaddedSuggestions.map((sug) => (
+                  return unaddedPlaces.map((sug: PlaceItem) => (
                     <div
                       key={sug.id}
                       className="p-5 rounded-2xl bg-[var(--card)] card-craft border-none hover:border-[var(--gold)]/40 transition flex flex-col justify-between"
@@ -1920,7 +2105,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
 
                         <h4 className="text-base font-serif font-semibold text-[var(--foreground)] mb-1.5">{sug.name}</h4>
                         <p className="text-xs text-[var(--foreground)]/60 leading-relaxed line-clamp-2 mb-4">
-                          {sug.description}
+                          {sug.description || `A must-visit ${sug.category} destination in ${sug.destination}.`}
                         </p>
 
                         {sug.openingHours && (
@@ -1944,6 +2129,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                 })()}
               </div>
             </div>
+
           </div>
         )}
 
@@ -2985,14 +3171,11 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                 </label>
                 <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-[var(--background)] border border-[var(--border)]">
                   {(() => {
-                    const destinationSuggestions = SUGGESTED_EXTRA_PLACES[trip?.destination] || SUGGESTED_EXTRA_PLACES["Goa"];
                     const currentDayStopPlaceIds = currentDayStops.map((s) => s.placeId);
-                    const nearbyCandidates = [
-                      ...places.filter((p) => !currentDayStopPlaceIds.includes(p.id)),
-                      ...destinationSuggestions.filter(
-                        (sug) => !places.some((p) => p.id === sug.id || p.name.toLowerCase() === sug.name.toLowerCase())
-                      ),
-                    ].slice(0, 3);
+                    // Show DB places not yet on this day's stops (live data only, no hardcoded suggestions)
+                    const nearbyCandidates = places
+                      .filter((p) => !currentDayStopPlaceIds.includes(p.id))
+                      .slice(0, 5);
 
                     if (nearbyCandidates.length === 0) {
                       return (
@@ -3026,6 +3209,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                   })()}
                 </div>
               </div>
+
 
               <div>
                 <label className="text-xs font-semibold text-[var(--foreground)]/80 block mb-1.5">

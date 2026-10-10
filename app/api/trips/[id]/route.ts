@@ -3,6 +3,39 @@ import { db } from "@/db";
 import { trip, tripMember, itinerary, stop, place, expense, profile } from "@/db/schema";
 import { eq, or, desc } from "drizzle-orm";
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const { status } = body;
+
+    const allowedStatuses = ["planning", "confirmed", "live", "completed", "archived"];
+    if (!status || !allowedStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: `Invalid status. Must be one of: ${allowedStatuses.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const [updated] = await db
+      .update(trip)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(trip.id, id as any))
+      .returning();
+
+    if (!updated) {
+      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, status: updated.status });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to update trip status" }, { status: 500 });
+  }
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

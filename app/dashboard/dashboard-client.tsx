@@ -23,14 +23,14 @@ interface TripItem {
   dates: string;
   type: string;
   members: number;
-  status: "planning" | "confirmed";
+  status: "planning" | "confirmed" | "live" | "completed" | "archived";
   image: string;
   budget: string;
   days: number;
   stopsCount: number;
 }
 
-const STATUS_MAP = {
+const STATUS_MAP: Record<string, { label: string; dot: string; badge: string }> = {
   confirmed: {
     label: "Confirmed",
     dot: "bg-emerald-400",
@@ -41,7 +41,23 @@ const STATUS_MAP = {
     dot: "bg-[var(--gold)] status-dot-pulse",
     badge: "bg-[var(--gold)]/10 text-[var(--gold)]",
   },
+  live: {
+    label: "🔴 Live",
+    dot: "bg-red-400 animate-pulse",
+    badge: "bg-red-400/10 text-red-500",
+  },
+  completed: {
+    label: "Completed",
+    dot: "bg-purple-400",
+    badge: "bg-purple-400/10 text-purple-500",
+  },
+  archived: {
+    label: "Archived",
+    dot: "bg-gray-400",
+    badge: "bg-gray-400/10 text-gray-500",
+  },
 };
+
 
 const METRIC_ICONS: Record<string, any> = {
   TrendingUp,
