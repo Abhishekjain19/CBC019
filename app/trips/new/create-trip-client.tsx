@@ -213,7 +213,7 @@ export default function CreateTripClient() {
 
         <form onSubmit={handleSubmit} className="space-y-10">
           {/* 1. Destination Selection */}
-          <div className="page-enter stagger-2 p-6 sm:p-8 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+          <div className="page-enter stagger-2 p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <span className="w-7 h-7 rounded-lg bg-[var(--gold)]/15 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-bold flex items-center justify-center">
@@ -241,7 +241,7 @@ export default function CreateTripClient() {
                     className={`btn-press group text-left rounded-xl border transition-all overflow-hidden flex flex-col justify-between ${
                       isSelected
                         ? "bg-[var(--gold)]/15 border-[var(--gold)]/60 shadow-[0_0_15px_rgba(223,178,108,0.15)]"
-                        : "bg-white/[0.02] border-white/[0.08] hover:border-white/[0.2] hover:bg-white/[0.04]"
+                        : "bg-[var(--surface-1)] border-[var(--border-subtle)] hover:border-[var(--gold)]/30 hover:bg-[var(--surface-2)]"
                     }`}
                   >
                     {/* Visual Photo Card */}
@@ -291,13 +291,13 @@ export default function CreateTripClient() {
                 value={customDestination}
                 onChange={(e) => setCustomDestination(e.target.value)}
                 placeholder="e.g. Manali, Pondicherry, Munnar..."
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] placeholder-white/30 field-input"
+                className="w-full px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] placeholder-[var(--text-subtle)] field-input"
               />
             </div>
           </div>
 
           {/* 2. Trip Type & Group Count */}
-          <div className="page-enter stagger-3 p-6 sm:p-8 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+          <div className="page-enter stagger-3 p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none">
             <div className="flex items-center gap-3 mb-6">
               <span className="w-7 h-7 rounded-lg bg-[var(--gold)]/15 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-bold flex items-center justify-center">
                 2
@@ -323,7 +323,7 @@ export default function CreateTripClient() {
                     className={`btn-press text-left p-4 rounded-xl border transition-all ${
                       isSelected
                         ? "bg-[var(--gold)]/15 border-[var(--gold)]/60 shadow-[0_0_15px_rgba(223,178,108,0.12)]"
-                        : "bg-white/[0.02] border-white/[0.08] hover:border-white/[0.18] hover:bg-white/[0.04]"
+                        : "bg-[var(--surface-1)] border-[var(--border-subtle)] hover:border-[var(--gold)]/30 hover:bg-[var(--surface-2)]"
                     }`}
                   >
                     <div
@@ -372,7 +372,7 @@ export default function CreateTripClient() {
           </div>
 
           {/* 3. Dates & Daily Rhythm */}
-          <div className="page-enter stagger-4 p-6 sm:p-8 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+          <div className="page-enter stagger-4 p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <span className="w-7 h-7 rounded-lg bg-[var(--gold)]/15 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-bold flex items-center justify-center">
@@ -396,7 +396,7 @@ export default function CreateTripClient() {
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] field-input"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] field-input"
                 />
               </div>
 
@@ -407,7 +407,7 @@ export default function CreateTripClient() {
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] field-input"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] field-input"
                 />
               </div>
             </div>
@@ -423,7 +423,7 @@ export default function CreateTripClient() {
                   value={dailyStart}
                   onChange={(e) => setDailyStart(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] field-input"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] field-input"
                 />
               </div>
 
@@ -437,14 +437,14 @@ export default function CreateTripClient() {
                   value={dailyEnd}
                   onChange={(e) => setDailyEnd(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] field-input"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] field-input"
                 />
               </div>
             </div>
           </div>
 
           {/* 4. Transport & Trip Budget */}
-          <div className="page-enter stagger-5 p-6 sm:p-8 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+          <div className="page-enter stagger-5 p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none">
             <div className="flex items-center gap-3 mb-6">
               <span className="w-7 h-7 rounded-lg bg-[var(--gold)]/15 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-bold flex items-center justify-center">
                 4
@@ -469,7 +469,7 @@ export default function CreateTripClient() {
                       className={`btn-press p-3.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1.5 ${
                         isSelected
                           ? "bg-[var(--gold)]/15 border-[var(--gold)]/60 text-[var(--gold)]"
-                          : "bg-white/[0.02] border-white/[0.08] text-[var(--foreground)] hover:border-white/[0.15]"
+                          : "bg-[var(--surface-1)] border-[var(--border-subtle)] text-[var(--foreground)] hover:border-[var(--gold)]/30 hover:bg-[var(--surface-2)]"
                       }`}
                     >
                       <IconComponent className="w-5 h-5 mb-0.5" />
@@ -501,7 +501,7 @@ export default function CreateTripClient() {
                   onChange={(e) => setBudgetRupees(e.target.value)}
                   placeholder="e.g. 45000"
                   required
-                  className="w-full pl-9 pr-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-sm text-[var(--foreground)] placeholder-white/30 field-input font-medium font-mono"
+                  className="w-full pl-9 pr-4 py-3 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm text-[var(--foreground)] placeholder-[var(--text-subtle)] field-input font-medium font-mono"
                 />
               </div>
               <p className="text-xs text-[var(--text-subtle)] mt-1.5">

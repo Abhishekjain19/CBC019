@@ -127,7 +127,7 @@ export default function TripMap({
   const [activePoiCategory, setActivePoiCategory] = useState<"none" | "restaurant" | "hotel" | "store" | "medical" | "all">("none");
 
   // Live Navigation State
-  const [isLiveNav, setIsLiveNav] = useState(false);
+  const [isLiveNav, setIsLiveNav] = useState(true);
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [navMode, setNavMode] = useState<"driving" | "walking" | "cycling">("driving");

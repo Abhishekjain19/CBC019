@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sun, Moon } from "lucide-react";
 
 export function ThemeToggle({
@@ -12,6 +13,7 @@ export function ThemeToggle({
 }) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
@@ -34,7 +36,7 @@ export function ThemeToggle({
     document.documentElement.setAttribute("data-theme", next);
   };
 
-  if (!mounted) {
+  if (!mounted || pathname === "/") {
     return null;
   }
 

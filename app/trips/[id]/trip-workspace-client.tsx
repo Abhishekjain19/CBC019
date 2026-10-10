@@ -1588,8 +1588,8 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
 
             {/* Days Tabs & Sub-Itineraries */}
             <div className="space-y-3 pb-1">
-              <div className="flex items-center justify-between gap-2 shadow-craft-sm border-none">
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-craft-sm border-none w-full">
+                <div className="flex gap-2 overflow-x-auto w-full pb-1 scrollbar-hide">
                   {tripDays.map((d) => {
                     const count = stops.filter((s) => s.dayIndex === d).length;
                     const isSelected = selectedDay === d;
@@ -1704,7 +1704,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
             <div className={`grid grid-cols-1 ${showMap ? "lg:grid-cols-12" : ""} gap-6 items-start`}>
               {/* Left Column: Sticky Interactive Map Route */}
               {showMap && (
-                <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-24 space-y-4 order-last lg:order-first">
+                <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-24 space-y-4 order-first">
                   <div className="p-4 rounded-2xl bg-[var(--card)] card-craft border-none">
                     <div className="flex items-center justify-between mb-3 text-xs">
                       <div className="flex items-center gap-2">
@@ -1732,7 +1732,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                       subItineraryTitle={activeSubItinerary?.title}
                       onClearSubItinerary={() => setActiveSubItineraryId(null)}
                       userInitialCoords={userLocation ? [userLocation.lng, userLocation.lat] : undefined}
-                      className="w-full h-[460px] lg:h-[calc(100vh-220px)] min-h-[420px] max-h-[720px] rounded-xl overflow-hidden shadow-craft-md border-none"
+                      className="w-full h-[300px] sm:h-[460px] lg:h-[calc(100vh-220px)] min-h-[300px] sm:min-h-[420px] max-h-[720px] rounded-xl overflow-hidden shadow-craft-md border-none"
                     />
                   </div>
                 </div>
