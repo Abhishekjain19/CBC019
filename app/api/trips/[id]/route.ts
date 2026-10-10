@@ -221,3 +221,44 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const tripRecord = await resolveTripRecord(id, user.userId);
+
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
+    if (tripRecord.ownerId !== user.userId) {
+      return NextResponse.json({ error: "Only the trip owner can delete this trip" }, { status: 403 });
+    }
+
+    // Delete cascading trip records
+    try {
+      const itins = await db.select({ id: itinerary.id }).from(itinerary).where(eq(itinerary.tripId, tripRecord.id));
+      for (const itinItem of itins) {
+        await db.delete(stop).where(eq(stop.itineraryId, itinItem.id));
+      }
+      await db.delete(itinerary).where(eq(itinerary.tripId, tripRecord.id));
+      await db.delete(expense).where(eq(expense.tripId, tripRecord.id));
+      await db.delete(tripMember).where(eq(tripMember.tripId, tripRecord.id));
+      await db.delete(trip).where(eq(trip.id, tripRecord.id));
+    } catch (err: any) {
+      console.error("Cascading delete error:", err);
+    }
+
+    return NextResponse.json({ success: true, deletedTripId: tripRecord.id });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to delete trip" }, { status: 500 });
+  }
+}
+

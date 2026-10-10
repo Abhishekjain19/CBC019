@@ -53,6 +53,15 @@ export async function GET(req: Request) {
         .orderBy(desc(trip.createdAt));
     }
 
+    // Deduplicate trips by ID
+    const uniqueTripsMap = new Map<string, any>();
+    userTrips.forEach((t) => {
+      if (t.id && !uniqueTripsMap.has(t.id)) {
+        uniqueTripsMap.set(t.id, t);
+      }
+    });
+    const uniqueUserTrips = Array.from(uniqueTripsMap.values());
+
     const allMembers = await db.select().from(tripMember);
     const allItins = await db.select().from(itinerary);
     const allStops = await db.select().from(stop);
@@ -60,7 +69,7 @@ export async function GET(req: Request) {
     const allPlaces = await db.select().from(place);
 
     // Map counts per trip
-    const tripsWithStats = userTrips.map((t) => {
+    const tripsWithStats = uniqueUserTrips.map((t) => {
       const membersForTrip = allMembers.filter((m) => m.tripId === t.id && !m.removedAt);
       const itin = allItins.find((i) => i.tripId === t.id);
       const stopsForTrip = itin ? allStops.filter((s) => s.itineraryId === itin.id) : [];
