@@ -66,9 +66,16 @@ const METRIC_ICONS: Record<string, any> = {
   Wallet,
 };
 
+interface UserSession {
+  userId: string;
+  email: string;
+  displayName: string;
+}
+
 export default function DashboardClient() {
   const [trips, setTrips] = useState<TripItem[]>([]);
   const [metrics, setMetrics] = useState<any[]>([]);
+  const [user, setUser] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -79,6 +86,7 @@ export default function DashboardClient() {
           const data = await res.json();
           if (data.trips) setTrips(data.trips);
           if (data.metrics) setMetrics(data.metrics);
+          if (data.user) setUser(data.user);
         }
       } catch (err) {
         console.error("Failed to load trips from database:", err);
@@ -88,6 +96,13 @@ export default function DashboardClient() {
     }
     fetchTrips();
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    window.location.href = "/sign-in";
+  };
 
   return (
     <div className="min-h-[100dvh] bg-[var(--background)] text-[var(--foreground)] selection:bg-[var(--gold)]/25 transition-colors duration-300">
@@ -117,18 +132,34 @@ export default function DashboardClient() {
             <Ticket className="w-3.5 h-3.5 text-[var(--gold)]" />
             <span className="hidden sm:inline">Join Pass</span>
           </Link>
-          <Link
-            href="/sign-in"
-            className="text-xs text-[var(--text-subtle)] hover:text-[var(--foreground)] transition-colors px-3 py-1.5 hidden sm:inline"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/sign-up"
-            className="btn-press btn-gold bg-[var(--gold)] text-black px-4 py-1.5 rounded-full text-xs font-bold shadow-[var(--shadow-gold)]"
-          >
-            Sign Up
-          </Link>
+          {user ? (
+            <div className="flex items-center gap-2 pl-2">
+              <span className="text-xs font-semibold text-[var(--foreground)]/90 bg-[var(--surface-2)] px-3 py-1.5 rounded-full border border-[var(--border-subtle)]">
+                {user.displayName}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors px-3 py-1.5 rounded-full hover:bg-red-400/10 font-medium"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/sign-in"
+                className="text-xs text-[var(--text-subtle)] hover:text-[var(--foreground)] transition-colors px-3 py-1.5 hidden sm:inline"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/sign-up"
+                className="btn-press btn-gold bg-[var(--gold)] text-black px-4 py-1.5 rounded-full text-xs font-bold shadow-[var(--shadow-gold)]"
+              >
+                Sign Up
+              </Link>
+            </div>
+          )}
         </div>
       </header>
 

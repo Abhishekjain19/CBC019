@@ -2,13 +2,25 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trip, tripMember, itinerary, stop, place, expense, profile } from "@/db/schema";
 import { eq, or, desc } from "drizzle-orm";
+import { getSessionUser } from "@/lib/auth";
+import { resolveTripRecord } from "@/lib/trips-db";
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
+    const tripRecord = await resolveTripRecord(id, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const body = await req.json();
     const { status } = body;
 
@@ -23,7 +35,7 @@ export async function PATCH(
     const [updated] = await db
       .update(trip)
       .set({ status, updatedAt: new Date() })
-      .where(eq(trip.id, id as any))
+      .where(eq(trip.id, tripRecord.id))
       .returning();
 
     if (!updated) {
@@ -41,31 +53,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-
-    // Find trip in DB: try direct UUID match, or joinCode match
-    let tripRecord: any = null;
-
-    try {
-      // 1. Direct ID match
-      const directMatches = await db.select().from(trip).where(eq(trip.id, id as any));
-      if (directMatches.length > 0) {
-        tripRecord = directMatches[0];
-      }
-    } catch {}
-
-    if (!tripRecord) {
-      try {
-        // 2. Join code match
-        const codeMatches = await db.select().from(trip).where(eq(trip.joinCode, id.toUpperCase()));
-        if (codeMatches.length > 0) {
-          tripRecord = codeMatches[0];
-        }
-      } catch {}
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { id } = await params;
+    const tripRecord = await resolveTripRecord(id, user.userId);
+
     if (!tripRecord) {
-      return NextResponse.json({ error: "Trip not found. The link may be invalid or the trip may have been deleted." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Trip not found. The link may be invalid, or you do not have permission to view this trip." },
+        { status: 404 }
+      );
     }
 
     // Fetch related records from DB
@@ -127,7 +127,9 @@ export async function GET(
       displayName:
         profileMap.get(m.userId) ||
         (m.userId === tripRecord.ownerId
-          ? "Trip Host (You)"
+          ? m.userId === user.userId
+            ? `${user.displayName} (Host)`
+            : "Trip Host"
           : m.userId.replace("user-", "").replace(/^\w/, (c) => c.toUpperCase()) || "Traveller"),
       email: `${m.userId.replace("user-", "")}@voyara.travel`,
       role: m.role as "owner" | "member",
@@ -156,6 +158,11 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
+      user: {
+        userId: user.userId,
+        email: user.email,
+        displayName: user.displayName,
+      },
       trip: {
         id: tripRecord.id,
         name: tripRecord.name || `${tripRecord.destination} Journey`,
@@ -182,3 +189,4 @@ export async function GET(
     return NextResponse.json({ error: error.message || "Failed to load trip from database" }, { status: 500 });
   }
 }
+

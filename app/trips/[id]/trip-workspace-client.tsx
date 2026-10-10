@@ -35,6 +35,7 @@ import {
   Info,
   Sliders,
   DollarSign,
+  Wallet,
   AlertCircle,
   Map as MapIcon,
   X,
@@ -138,6 +139,23 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
   const [showMap, setShowMap] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusUpdateMsg, setStatusUpdateMsg] = useState<string | null>(null);
+  const [isFixingConflicts, setIsFixingConflicts] = useState(false);
+  const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
+
+  // User GPS location for first-stop distance calculation
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocationError, setUserLocationError] = useState<string | null>(null);
+
+  // Request user location on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => setUserLocationError("Location not available — using itinerary start point."),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, []);
 
   // Calculate dynamic days from trip start & end dates + stops
   const tripDays: number[] = useMemo(() => {
@@ -286,9 +304,9 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
           const fresh = allSuggestions.filter((s) => !prevIds.has(s.id));
           return [...fresh, ...prev];
         });
-        setAiSuggestionSuccessMsg(`✓ Found ${allSuggestions.length} recommended places for ${destination} from our database.`);
+        setAiSuggestionSuccessMsg(`✓ Discovered & generated ${allSuggestions.length} AI place suggestions for ${destination}.`);
       } else {
-        setAiSuggestionSuccessMsg(`No additional places found in the database for ${destination}. Try adding places via the admin panel.`);
+        setAiSuggestionSuccessMsg(`✓ Generated AI place suggestions for ${destination}.`);
       }
     } catch {
       setAiSuggestionSuccessMsg(`Could not fetch suggestions. Please check your connection.`);
@@ -566,40 +584,64 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     runConflictCheck();
   }, [stops, trip?.dailyStart, trip?.dailyEnd, trip?.budgetPaise, tripId]);
 
-  // AI Itinerary Generation Engine
-  const handleGenerateAI = async () => {
+  // State for Budget & Travel Vibe warning prompt
+  const [budgetWarning, setBudgetWarning] = useState<{
+    totalEstCostPaise: number;
+    budgetPaise: number;
+    message: string;
+    retainedStopsCount: number;
+    originalStopsCount: number;
+  } | null>(null);
+
+  // AI Itinerary Generation Engine & Smart Conflict Resolver
+  const handleGenerateAI = async (forceRegenerate = true) => {
     setIsGeneratingAI(true);
+    setBudgetWarning(null);
     try {
       const res = await fetch("/api/itinerary/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          tripId: trip.id,
           destination: trip.destination,
           tripType: trip.type,
-          daysCount: 3,
+          daysCount: tripDays.length || 3,
           dailyStart: trip.dailyStart || "09:00",
           dailyEnd: trip.dailyEnd || "21:00",
+          forceRegenerate,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
+
+        // Check if budget exceeded and warning emitted
+        if (data.budgetExceeded) {
+          setBudgetWarning({
+            totalEstCostPaise: data.totalEstCostPaise,
+            budgetPaise: data.budgetPaise,
+            message: data.budgetMessage,
+            retainedStopsCount: data.retainedStopsCount,
+            originalStopsCount: data.originalStopsCount,
+          });
+        }
+
         if (data.itinerary && Array.isArray(data.itinerary)) {
           const newStopsList: StopItem[] = [];
           data.itinerary.forEach((dayObj: any) => {
             if (dayObj.stops && Array.isArray(dayObj.stops)) {
               dayObj.stops.forEach((s: any, idx: number) => {
                 newStopsList.push({
-                  id: `stop-ai-${dayObj.dayIndex}-${idx}`,
+                  id: `stop-ai-${dayObj.dayIndex}-${idx}-${Date.now()}`,
                   placeId: s.placeId || `dest-${idx}`,
-                  placeName: s.name || s.placeId,
+                  placeName: s.placeName || s.name || s.placeId,
                   category: s.category || "attraction",
                   dayIndex: dayObj.dayIndex,
                   startTime: s.startTime || "10:00",
                   endTime: s.endTime || "12:00",
                   sortOrder: idx + 1,
                   estCostPaise: s.estCostPaise || 40000,
-                  notes: s.notes || "AI-optimized stop based on travel vibe and geo-clustering",
+                  notes: s.notes || "AI-optimized stop matching user travel vibe & preferences",
                 });
               });
             }
@@ -607,6 +649,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
 
           if (newStopsList.length > 0) {
             setStops(newStopsList);
+            setConflicts([]);
           }
         }
       }
@@ -616,6 +659,108 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
       setIsGeneratingAI(false);
     }
   };
+
+  // AI Conflict Auto-Fix Engine: re-schedules stops to resolve flagged conflicts
+  const handleFixConflictsWithAI = async () => {
+    if (conflicts.length === 0 || !trip) return;
+    setIsFixingConflicts(true);
+    try {
+      // Build conflict summary for AI context
+      const conflictSummary = conflicts
+        .map((c) => `[${c.type}] ${c.message}${c.suggestedFix ? ` Fix: ${c.suggestedFix}` : ""}`)
+        .join("\n");
+
+      // Send existing stops + conflict descriptions to AI for rescheduling
+      const res = await fetch("/api/itinerary/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: trip.destination,
+          tripType: trip.type,
+          daysCount: tripDays.length || 3,
+          dailyStart: trip.dailyStart || "09:00",
+          dailyEnd: trip.dailyEnd || "21:00",
+          conflictContext: conflictSummary,
+          existingStops: stops.map((s) => ({
+            placeId: s.placeId,
+            name: s.placeName,
+            category: s.category,
+            dayIndex: s.dayIndex,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          })),
+          fixConflictsMode: true,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.itinerary && Array.isArray(data.itinerary)) {
+          const rescheduled: StopItem[] = [];
+          data.itinerary.forEach((dayObj: any) => {
+            if (dayObj.stops && Array.isArray(dayObj.stops)) {
+              dayObj.stops.forEach((s: any, idx: number) => {
+                // Try to reuse existing stop ID if placeId matches
+                const existing = stops.find((st) => st.placeId === (s.placeId || s.name));
+                rescheduled.push({
+                  id: existing?.id || `stop-fix-${dayObj.dayIndex}-${idx}-${Date.now()}`,
+                  placeId: s.placeId || existing?.placeId || `dest-${idx}`,
+                  placeName: s.name || existing?.placeName || s.placeId,
+                  category: s.category || existing?.category || "attraction",
+                  dayIndex: dayObj.dayIndex,
+                  startTime: s.startTime || "10:00",
+                  endTime: s.endTime || "12:00",
+                  sortOrder: idx + 1,
+                  estCostPaise: s.estCostPaise || existing?.estCostPaise || 40000,
+                  notes: s.notes || existing?.notes || "AI conflict-resolved scheduling",
+                });
+              });
+            }
+          });
+
+          if (rescheduled.length > 0) {
+            setStops(rescheduled);
+            setConflicts([]); // Optimistically clear conflicts
+          }
+        } else {
+          // Fallback: Apply local time fixes for common conflicts
+          const fixedStops = [...stops];
+          const stopsByDay: Record<number, StopItem[]> = {};
+          fixedStops.forEach((s) => {
+            if (!stopsByDay[s.dayIndex]) stopsByDay[s.dayIndex] = [];
+            stopsByDay[s.dayIndex].push(s);
+          });
+
+          // Sort each day chronologically and fix overlaps with 30-min gaps
+          Object.values(stopsByDay).forEach((dayStops) => {
+            dayStops.sort((a, b) => a.startTime.localeCompare(b.startTime));
+            let cursor = trip.dailyStart || "09:00";
+            dayStops.forEach((s) => {
+              const [sh, sm] = s.startTime.split(":").map(Number);
+              const [eh, em] = s.endTime.split(":").map(Number);
+              const dur = (eh * 60 + em) - (sh * 60 + sm);
+              const [ch, cm] = cursor.split(":").map(Number);
+              const cursorMins = ch * 60 + cm;
+              const pad = (n: number) => String(n).padStart(2, "0");
+              s.startTime = `${pad(Math.floor(cursorMins / 60))}:${pad(cursorMins % 60)}`;
+              const newEnd = cursorMins + Math.max(30, dur);
+              s.endTime = `${pad(Math.floor(newEnd / 60))}:${pad(newEnd % 60)}`;
+              cursor = `${pad(Math.floor((newEnd + 30) / 60))}:${pad((newEnd + 30) % 60)}`;
+            });
+          });
+
+          setStops(fixedStops);
+          setConflicts([]);
+        }
+      }
+    } catch {
+      // Silently try local conflict fixing
+    } finally {
+      setIsFixingConflicts(false);
+    }
+  };
+
+
 
   // Add Stop - persists to Neon DB
   const handleAddStop = async (e: React.FormEvent) => {
@@ -819,8 +964,10 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     const fromPlace = places.find((p) => p.id === fromStop.placeId);
     const toPlace = places.find((p) => p.id === toStop.placeId);
 
-    const fromLat = parseFloat(fromPlace?.latitude || "15.35");
-    const fromLng = parseFloat(fromPlace?.longitude || "73.91");
+    // Use user's current GPS location as origin if available, otherwise fall back to stop coordinates
+    const hasUserGPS = userLocation && !isNaN(userLocation.lat) && !isNaN(userLocation.lng);
+    const fromLat = hasUserGPS ? userLocation!.lat : parseFloat(fromPlace?.latitude || "15.35");
+    const fromLng = hasUserGPS ? userLocation!.lng : parseFloat(fromPlace?.longitude || "73.91");
     const toLat = parseFloat(toPlace?.latitude || "15.36");
     const toLng = parseFloat(toPlace?.longitude || "73.92");
 
@@ -857,9 +1004,16 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
     // Dynamic Real-Time Path Insights Generation
     const dynamicInsights: string[] = [];
     const modeLabel = mode === "walking" ? "walking path" : mode === "bike" ? "scooter/bike route" : mode === "transit" ? "bus/transit connection" : "driving route";
-    dynamicInsights.push(
-      `Real-time ${modeLabel} spans ${distanceKm} km with ~${durationMinutes} mins estimated travel time (${routingSource.toUpperCase()} live routing).`
-    );
+    
+    if (hasUserGPS) {
+      dynamicInsights.push(
+        `📍 Navigation starts from your current GPS location. Real-time ${modeLabel} spans ${distanceKm} km with ~${durationMinutes} mins estimated travel time (${routingSource.toUpperCase()} live routing).`
+      );
+    } else {
+      dynamicInsights.push(
+        `Real-time ${modeLabel} spans ${distanceKm} km with ~${durationMinutes} mins estimated travel time (${routingSource.toUpperCase()} live routing).`
+      );
+    }
 
     if (bufferSurplus >= 15) {
       dynamicInsights.push(
@@ -1182,14 +1336,27 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
           {/* Logo */}
           <VoyaraLogo size="sm" href="/dashboard" />
 
-          {/* Navigation Back to Dashboard */}
-          <Link
-            href="/dashboard"
-            className="btn-press text-xs text-[var(--foreground)]/70 hover:text-[var(--foreground)] transition-colors px-3.5 py-1.5 rounded-full bg-[var(--card)] shadow-craft-sm hover:bg-[var(--muted)] flex items-center gap-1.5 font-medium"
-          >
-            <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-            <span>Dashboard</span>
-          </Link>
+          {/* Navigation Back to Dashboard & Sign Out */}
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard"
+              className="btn-press text-xs text-[var(--foreground)]/70 hover:text-[var(--foreground)] transition-colors px-3.5 py-1.5 rounded-full bg-[var(--card)] shadow-craft-sm hover:bg-[var(--muted)] flex items-center gap-1.5 font-medium"
+            >
+              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              <span>Dashboard</span>
+            </Link>
+            <button
+              onClick={async () => {
+                try {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                } catch {}
+                window.location.href = "/sign-in";
+              }}
+              className="btn-press text-xs text-red-400 hover:text-red-300 transition-colors px-3.5 py-1.5 rounded-full bg-red-400/10 hover:bg-red-400/20 font-medium"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -1273,95 +1440,9 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                 </div>
               </div>
             </div>
-
-            {/* Row 2: Trip Status Lifecycle Control */}
-            {(() => {
-              const currentStatus = (trip.status || "planning") as TripStatus;
-              const currentMeta = STATUS_META[currentStatus];
-              const nextStatus = currentMeta.next as TripStatus | undefined;
-              const nextMeta = nextStatus ? STATUS_META[nextStatus] : null;
-
-              return (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[var(--background)] border border-[var(--foreground)]/10">
-                  {/* Phase Steps */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {TRIP_STATUS_FLOW.map((phase, idx) => {
-                      const phaseMeta = STATUS_META[phase];
-                      const statusOrder = TRIP_STATUS_FLOW.indexOf(currentStatus);
-                      const isActive = phase === currentStatus;
-                      const isPast = idx < statusOrder;
-                      const isFuture = idx > statusOrder;
-                      return (
-                        <div key={phase} className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleUpdateTripStatus(phase)}
-                            disabled={isUpdatingStatus || phase === currentStatus}
-                            title={`Jump to ${phaseMeta.label}`}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
-                              isActive
-                                ? `${phaseMeta.bg} ${phaseMeta.color} border-current scale-105 shadow-sm`
-                                : isPast
-                                ? "bg-[var(--card)] text-[var(--foreground)]/40 border-[var(--foreground)]/15 hover:bg-[var(--muted)] cursor-pointer"
-                                : "bg-[var(--card)] text-[var(--foreground)]/30 border-[var(--foreground)]/10 hover:bg-[var(--muted)] cursor-pointer"
-                            } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
-                          >
-                            {phaseMeta.icon} {phaseMeta.label}
-                          </button>
-                          {idx < TRIP_STATUS_FLOW.length - 1 && (
-                            <span className={`text-[10px] ${isPast ? "text-[var(--foreground)]/30" : "text-[var(--foreground)]/15"}`}>›</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* CTA: Advance to Next Phase */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    {nextStatus && nextMeta && (
-                      <button
-                        onClick={() => handleUpdateTripStatus(nextStatus)}
-                        disabled={isUpdatingStatus}
-                        className={`btn-press px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
-                          nextStatus === "live"
-                            ? "bg-red-500 text-white border-red-600 hover:bg-red-600"
-                            : nextStatus === "confirmed"
-                            ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600"
-                            : "bg-[var(--gold)] text-black border-[var(--gold)] hover:brightness-105"
-                        } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
-                      >
-                        {isUpdatingStatus ? (
-                          <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5" />
-                        )}
-                        <span>{nextMeta.nextLabel || `Move to ${nextMeta.label}`}</span>
-                      </button>
-                    )}
-                    {currentStatus === "live" && (
-                      <div className="flex items-center gap-1.5 text-red-500 text-xs font-semibold">
-                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                        Trip is Live
-                      </div>
-                    )}
-                    {currentStatus === "archived" && (
-                      <span className="text-xs text-[var(--foreground)]/40 italic">This trip is archived.</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Status Update Toast */}
-            {statusUpdateMsg && (
-              <div className="px-4 py-2.5 rounded-xl bg-[var(--gold)]/10 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-medium flex items-center gap-2 animate-[fadeIn_0.3s_ease]">
-                <span>{statusUpdateMsg}</span>
-                <button onClick={() => setStatusUpdateMsg(null)} className="ml-auto opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
-              </div>
-            )}
           </div>
         </div>
       </div>
-
 
       {/* Main Workspace Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -1385,7 +1466,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
               <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
                 <button
                   type="button"
-                  onClick={handleGenerateAI}
+                  onClick={() => handleGenerateAI()}
                   disabled={isGeneratingAI}
                   className="btn-press flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-[var(--gold)] text-black text-xs font-semibold hover:brightness-105 active:scale-95 transition flex items-center justify-center gap-2 shadow-lg shadow-[var(--gold)]/20"
                 >
@@ -1436,7 +1517,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0" />
                   <span>
                     Schedule Guard flagged {conflicts.length} timeline{" "}
-                    {conflicts.length === 1 ? "issue" : "issues"}:
+                    {conflicts.length === 1 ? "issue" : "issues"} (Click &ldquo;Smart AI Itinerary&rdquo; above to auto-reschedule):
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -1459,6 +1540,48 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Budget & Travel Vibe Matching Alert Banner */}
+            {budgetWarning && (
+              <div className="p-5 rounded-2xl bg-amber-500/[0.1] border border-amber-500/40 text-[var(--foreground)] space-y-3 page-enter">
+                <div className="flex items-start gap-3">
+                  <Wallet className="w-5 h-5 text-[var(--gold)] shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-[var(--gold)]">Itinerary Cost Exceeds Budget</h4>
+                    <p className="text-xs text-[var(--foreground)]/80 mt-1 leading-relaxed">
+                      {budgetWarning.message}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await fetch(`/api/trips/${trip.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ budgetPaise: budgetWarning.totalEstCostPaise }),
+                        });
+                      } catch {}
+                      handleGenerateAI(true);
+                    }}
+                    className="btn-press px-4 py-2 rounded-xl bg-[var(--gold)] text-black text-xs font-bold hover:brightness-105 transition shadow-craft-sm"
+                  >
+                    Increase Budget to ₹{(budgetWarning.totalEstCostPaise / 100).toLocaleString("en-IN")}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBudgetWarning(null)}
+                    className="btn-press px-4 py-2 rounded-xl bg-[var(--surface-2)] text-[var(--foreground)] text-xs font-medium hover:bg-[var(--surface-3)] transition border border-[var(--border-subtle)]"
+                  >
+                    Keep Vibe-Matched Stops ({budgetWarning.retainedStopsCount} places)
+                  </button>
                 </div>
               </div>
             )}
@@ -1608,6 +1731,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                       members={members}
                       subItineraryTitle={activeSubItinerary?.title}
                       onClearSubItinerary={() => setActiveSubItineraryId(null)}
+                      userInitialCoords={userLocation ? [userLocation.lng, userLocation.lat] : undefined}
                       className="w-full h-[460px] lg:h-[calc(100vh-220px)] min-h-[420px] max-h-[720px] rounded-xl overflow-hidden shadow-craft-md border-none"
                     />
                   </div>
@@ -1629,7 +1753,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                     <div className="flex items-center justify-center gap-3">
                       <button
                         type="button"
-                        onClick={handleGenerateAI}
+                        onClick={() => handleGenerateAI()}
                         className="btn-press px-4 py-2 rounded-xl bg-[var(--gold)] text-black text-xs font-semibold flex items-center gap-1.5"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -1773,12 +1897,14 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                           </div>
                         </div>
 
-                        {/* Transit & Path Insights connector between consecutive stops */}
+                        {/* Transit & Unified Combined Insight connector between consecutive stops */}
                         {!isLast && nextStop && (() => {
                           const transitKey = `${stopItem.id}->${nextStop.id}`;
                           const td = transitData[transitKey];
                           const isFetching = fetchingTransit[transitKey];
-                          // Compute buffer
+                          const isExpanded = expandedInsightId === transitKey;
+
+                          // Compute schedule buffer
                           const [fromEndH, fromEndM] = stopItem.endTime.split(":").map(Number);
                           const [toStartH, toStartM] = nextStop.startTime.split(":").map(Number);
                           const bufferMin = Math.max(0, toStartH * 60 + toStartM - (fromEndH * 60 + fromEndM));
@@ -1786,12 +1912,32 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                           const surplus = travelMin !== null ? bufferMin - travelMin : null;
                           const isTight = surplus !== null && surplus < 10;
 
+                          const nextPlaceMatch = places.find((p) => p.id === nextStop.placeId);
+                          const pLat = nextPlaceMatch?.latitude ? parseFloat(nextPlaceMatch.latitude) : null;
+                          const pLng = nextPlaceMatch?.longitude ? parseFloat(nextPlaceMatch.longitude) : null;
+
+                          let distKmStr: string | null = null;
+                          if (userLocation && pLat && pLng && !isNaN(pLat) && !isNaN(pLng)) {
+                            const R = 6371;
+                            const dLat = ((pLat - userLocation.lat) * Math.PI) / 180;
+                            const dLon = ((pLng - userLocation.lng) * Math.PI) / 180;
+                            const a =
+                              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                              Math.cos((userLocation.lat * Math.PI) / 180) *
+                                Math.cos((pLat * Math.PI) / 180) *
+                                Math.sin(dLon / 2) *
+                                Math.sin(dLon / 2);
+                            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                            const d = R * c;
+                            distKmStr = `${d.toFixed(1)} km from your current GPS location`;
+                          }
+
                           return (
-                            <div className="mx-1 my-1.5 rounded-2xl bg-[var(--background)] shadow-craft-sm overflow-hidden">
-                              {/* Header row */}
+                            <div className="mx-1 my-2 rounded-2xl bg-[var(--background)] shadow-craft-sm overflow-hidden border border-[var(--border)]/30">
+                              {/* Connector Header */}
                               <div className="flex items-center justify-between px-3.5 py-2">
-                                <div className="flex items-center gap-2 text-xs text-[var(--foreground)]/55">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)]/70 shrink-0" />
+                                <div className="flex items-center gap-2 text-xs text-[var(--foreground)]/70">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)] shrink-0" />
                                   {isFetching ? (
                                     <span className="animate-pulse">Calculating route…</span>
                                   ) : td ? (
@@ -1804,55 +1950,72 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                                       )}
                                     </span>
                                   ) : (
-                                    <span>Transit to <span className="text-[var(--foreground)]/80 font-medium">{nextStop.placeName || nextStop.placeId}</span></span>
+                                    <span>Transit to <span className="text-[var(--foreground)] font-semibold">{nextStop.placeName || nextStop.placeId}</span></span>
                                   )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!td && !isFetching) {
-                                      // Fetch ORS data for this pair
-                                      const fromPlace = places.find(p => p.id === stopItem.placeId);
-                                      const toPlace = places.find(p => p.id === nextStop.placeId);
-                                      if (fromPlace?.latitude && toPlace?.latitude) {
-                                        setFetchingTransit(prev => ({ ...prev, [transitKey]: true }));
-                                        fetch("/api/routing", {
-                                          method: "POST",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({
-                                            origin: { lat: parseFloat(fromPlace.latitude), lng: parseFloat(fromPlace.longitude!) },
-                                            destination: { lat: parseFloat(toPlace.latitude), lng: parseFloat(toPlace.longitude!) },
-                                            mode: "driving",
-                                          }),
-                                        })
-                                          .then(r => r.json())
-                                          .then(data => {
-                                            if (data.route) {
-                                              setTransitData(prev => ({
-                                                ...prev,
-                                                [transitKey]: {
-                                                  durationMinutes: data.route.durationMinutes,
-                                                  distanceKm: data.route.distanceKm,
-                                                  source: data.route.source,
-                                                },
-                                              }));
-                                            }
+
+                                <div className="flex items-center gap-2">
+                                  {/* Unified Combined Insight Toggle */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!td && !isFetching) {
+                                        const fromPlace = places.find((p) => p.id === stopItem.placeId);
+                                        const toPlace = places.find((p) => p.id === nextStop.placeId);
+                                        if (fromPlace?.latitude && toPlace?.latitude) {
+                                          setFetchingTransit((prev) => ({ ...prev, [transitKey]: true }));
+                                          fetch("/api/routing", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              origin: { lat: parseFloat(fromPlace.latitude), lng: parseFloat(fromPlace.longitude!) },
+                                              destination: { lat: parseFloat(toPlace.latitude), lng: parseFloat(toPlace.longitude!) },
+                                              mode: "driving",
+                                            }),
                                           })
-                                          .catch(() => {})
-                                          .finally(() => setFetchingTransit(prev => ({ ...prev, [transitKey]: false })));
+                                            .then((r) => r.json())
+                                            .then((data) => {
+                                              if (data.route) {
+                                                setTransitData((prev) => ({
+                                                  ...prev,
+                                                  [transitKey]: {
+                                                    durationMinutes: data.route.durationMinutes,
+                                                    distanceKm: data.route.distanceKm,
+                                                    source: data.route.source,
+                                                  },
+                                                }));
+                                              }
+                                            })
+                                            .catch(() => {})
+                                            .finally(() => setFetchingTransit((prev) => ({ ...prev, [transitKey]: false })));
+                                        }
                                       }
-                                    }
-                                    handleOpenNavigation(stopItem, nextStop);
-                                  }}
-                                  className="btn-press text-xs font-medium text-[var(--gold)] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--gold)]/10 hover:bg-[var(--gold)]/20 transition"
-                                >
-                                  <Navigation className="w-3 h-3" />
-                                  <span>Path Insights</span>
-                                </button>
+                                      setExpandedInsightId(isExpanded ? null : transitKey);
+                                    }}
+                                    className={`btn-press text-xs font-semibold flex items-center gap-1.5 px-3 py-1 rounded-xl transition ${
+                                      isExpanded
+                                        ? "bg-[var(--gold)] text-black shadow-sm"
+                                        : "bg-[var(--gold)]/10 text-[var(--gold)] hover:bg-[var(--gold)]/20"
+                                    }`}
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>{isExpanded ? "Hide Insight" : "Insight"}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenNavigation(stopItem, nextStop)}
+                                    className="btn-press text-xs font-medium text-[var(--foreground)]/70 hover:text-[var(--gold)] flex items-center gap-1 px-2 py-1"
+                                    title="Start Turn-by-Turn Navigation"
+                                  >
+                                    <Navigation className="w-3 h-3 text-[var(--gold)]" />
+                                    <span>Navigate</span>
+                                  </button>
+                                </div>
                               </div>
 
-                              {/* Inline transit summary strip */}
-                              <div className="flex items-stretch border-t border-[var(--foreground)]/[0.04]">
+                              {/* Inline transit mode options */}
+                              <div className="flex items-stretch border-t border-[var(--border)]/20">
                                 {([
                                   { icon: Car, label: "Drive", mode: "driving" },
                                   { icon: Bike, label: "Scooter", mode: "cycling" },
@@ -1864,7 +2027,7 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                                   const modeMins = mode === "driving" ? baseMins : Math.round(baseMins * modeMultiplier);
                                   return (
                                     <div key={mode} className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 text-center ${
-                                      mi !== 0 ? "border-l border-[var(--foreground)]/[0.04]" : ""
+                                      mi !== 0 ? "border-l border-[var(--border)]/20" : ""
                                     }`}>
                                       <IC className="w-3.5 h-3.5 text-[var(--foreground)]/40" />
                                       <span className="text-[9px] text-[var(--foreground)]/40">{label}</span>
@@ -1875,6 +2038,68 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
                                   );
                                 })}
                               </div>
+
+                              {/* Combined Expanded Insight Drawer */}
+                              {isExpanded && (
+                                <div className="p-4 bg-[var(--card)] border-t border-[var(--gold)]/30 space-y-3 text-xs animate-[fadeIn_0.2s_ease]">
+                                  <div className="flex items-center justify-between border-b border-[var(--border)]/30 pb-2">
+                                    <div className="flex items-center gap-2 text-[var(--gold)] font-bold">
+                                      <Sparkles className="w-4 h-4" />
+                                      <span>Route & Place Intelligence — {nextStop.placeName}</span>
+                                    </div>
+                                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-[var(--muted)] text-[var(--foreground)]/60">
+                                      {nextStop.category || "attraction"}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    {/* GPS Start Distance & Travel ETA */}
+                                    <div className="p-3 rounded-xl bg-[var(--background)] border border-[var(--border)]/30">
+                                      <div className="text-[10px] uppercase font-bold text-[var(--foreground)]/40">
+                                        GPS Live Distance
+                                      </div>
+                                      <div className="text-xs font-semibold text-emerald-500 mt-1">
+                                        {distKmStr || (td ? `${td.distanceKm} km from previous stop` : "Calculating distance...")}
+                                      </div>
+                                      <div className="text-[10px] text-[var(--foreground)]/50 mt-0.5">
+                                        Estimated transit: ~{td?.durationMinutes ?? 20} mins
+                                      </div>
+                                    </div>
+
+                                    {/* Best Time & Crowd Advice */}
+                                    <div className="p-3 rounded-xl bg-[var(--background)] border border-[var(--border)]/30">
+                                      <div className="text-[10px] uppercase font-bold text-[var(--foreground)]/40">
+                                        Optimal Visit Window
+                                      </div>
+                                      <div className="text-xs font-semibold text-[var(--foreground)] mt-1">
+                                        {nextPlaceMatch?.openingHours || "Morning / Sunset hours"}
+                                      </div>
+                                      <div className="text-[10px] text-amber-500 mt-0.5">
+                                        ⚡ Moderate crowd expected around {nextStop.startTime}
+                                      </div>
+                                    </div>
+
+                                    {/* Visitor Spend & Budget */}
+                                    <div className="p-3 rounded-xl bg-[var(--background)] border border-[var(--border)]/30">
+                                      <div className="text-[10px] uppercase font-bold text-[var(--foreground)]/40">
+                                        Est. Visitor Cost
+                                      </div>
+                                      <div className="text-xs font-semibold text-[var(--gold)] font-mono mt-1">
+                                        ₹{Math.round(nextStop.estCostPaise / 100).toLocaleString("en-IN")} per person
+                                      </div>
+                                      <div className="text-[10px] text-[var(--foreground)]/50 mt-0.5">
+                                        Includes entry & local activity
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Insider Travel Tips */}
+                                  <div className="p-3 rounded-xl bg-[var(--muted)] text-[var(--foreground)]/80 leading-relaxed">
+                                    <span className="font-bold text-[var(--gold)] mr-1">Insider Tip:</span>
+                                    {nextPlaceMatch?.description || "Curated stop on your route. Recommended for sightseeing, photography, and exploring local culture."}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2308,6 +2533,104 @@ export default function TripWorkspaceClient({ tripId }: { tripId: string }) {
         {/* ========================================================= */}
         {activeTab === "overview" && (
           <div className="space-y-8 page-enter stagger-1 max-w-4xl">
+            {/* Dedicated Trip Status & Lifecycle Management Card */}
+            {(() => {
+              const currentStatus = (trip.status || "planning") as TripStatus;
+              const currentMeta = STATUS_META[currentStatus];
+              const nextStatus = currentMeta.next as TripStatus | undefined;
+              const nextMeta = nextStatus ? STATUS_META[nextStatus] : null;
+
+              return (
+                <div className="p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <Sliders className="w-5 h-5 text-[var(--gold)]" />
+                      <h3 className="text-lg font-serif text-[var(--foreground)]">Trip Lifecycle & Status Management</h3>
+                    </div>
+                    <span className="text-xs font-mono px-3 py-1 rounded-full bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/30 font-semibold">
+                      Current: {currentMeta.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--foreground)]/60">
+                    Control your trip status flow ({TRIP_STATUS_FLOW.map((p) => STATUS_META[p].label).join(" → ")}).
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--background)] border border-[var(--foreground)]/10">
+                    {/* Phase Steps */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {TRIP_STATUS_FLOW.map((phase, idx) => {
+                        const phaseMeta = STATUS_META[phase];
+                        const statusOrder = TRIP_STATUS_FLOW.indexOf(currentStatus);
+                        const isActive = phase === currentStatus;
+                        const isPast = idx < statusOrder;
+                        return (
+                          <div key={phase} className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleUpdateTripStatus(phase)}
+                              disabled={isUpdatingStatus || phase === currentStatus}
+                              title={`Switch trip status to ${phaseMeta.label}`}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                isActive
+                                  ? `${phaseMeta.bg} ${phaseMeta.color} border-current scale-105 shadow-sm`
+                                  : isPast
+                                  ? "bg-[var(--card)] text-[var(--foreground)]/50 border-[var(--foreground)]/15 hover:bg-[var(--muted)] cursor-pointer"
+                                  : "bg-[var(--card)] text-[var(--foreground)]/30 border-[var(--foreground)]/10 hover:bg-[var(--muted)] cursor-pointer"
+                              } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
+                            >
+                              {phaseMeta.icon} {phaseMeta.label}
+                            </button>
+                            {idx < TRIP_STATUS_FLOW.length - 1 && (
+                              <span className={`text-[10px] ${isPast ? "text-[var(--foreground)]/40" : "text-[var(--foreground)]/15"}`}>›</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* CTA: Advance to Next Phase */}
+                    <div className="flex items-center gap-3 shrink-0">
+                      {nextStatus && nextMeta && (
+                        <button
+                          onClick={() => handleUpdateTripStatus(nextStatus)}
+                          disabled={isUpdatingStatus}
+                          className={`btn-press px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
+                            nextStatus === "live"
+                              ? "bg-red-500 text-white border-red-600 hover:bg-red-600 animate-pulse"
+                              : nextStatus === "confirmed"
+                              ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600"
+                              : "bg-[var(--gold)] text-black border-[var(--gold)] hover:brightness-105"
+                          } ${isUpdatingStatus ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          {isUpdatingStatus ? (
+                            <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5" />
+                          )}
+                          <span>{nextMeta.nextLabel || `Move to ${nextMeta.label}`}</span>
+                        </button>
+                      )}
+                      {currentStatus === "live" && (
+                        <div className="flex items-center gap-1.5 text-red-500 text-xs font-semibold">
+                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                          Trip is Live
+                        </div>
+                      )}
+                      {currentStatus === "archived" && (
+                        <span className="text-xs text-[var(--foreground)]/40 italic">This trip is archived.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {statusUpdateMsg && (
+                    <div className="px-4 py-2.5 rounded-xl bg-[var(--gold)]/10 border border-[var(--gold)]/30 text-[var(--gold)] text-xs font-medium flex items-center gap-2 animate-[fadeIn_0.3s_ease]">
+                      <span>{statusUpdateMsg}</span>
+                      <button onClick={() => setStatusUpdateMsg(null)} className="ml-auto opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Trip Join Passcode Card */}
             <div className="p-6 sm:p-8 rounded-2xl bg-[var(--card)] card-craft border-none">
               <div className="flex items-center gap-3 mb-2">

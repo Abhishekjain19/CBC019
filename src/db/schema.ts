@@ -1,5 +1,14 @@
 import { pgTable, text, integer, timestamp, boolean, varchar, uuid, primaryKey } from "drizzle-orm/pg-core";
 
+// 0. User Auth Table (credentials and account records)
+export const userAuth = pgTable("user_auth", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // 1. Profile Table (tied to Neon Auth user_id)
 export const profile = pgTable("profile", {
   userId: varchar("user_id", { length: 255 }).primaryKey(),

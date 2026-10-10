@@ -3,22 +3,33 @@ import { db } from "@/db";
 import { expense, expenseSplit } from "@/db/schema";
 import { calculateEqualSplit, validateExactSplit, SplitResult } from "@/lib/expenses";
 import { resolveTripRecord } from "@/lib/trips-db";
+import { getSessionUser } from "@/lib/auth";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const body = await req.json();
 
     const {
-      payerId = "demo-user",
+      payerId = user.userId,
       amountPaise,
       category = "misc",
       note = "",
       splitType = "equal",
-      participants = [payerId],
+      participants = [user.userId],
       exactSplits = [],
     } = body;
 
@@ -43,11 +54,6 @@ export async function POST(
       calculatedSplits = exactSplits;
     }
 
-    const tripRecord = await resolveTripRecord(tripId);
-    if (!tripRecord) {
-      return NextResponse.json({ error: "Trip not found in database" }, { status: 404 });
-    }
-
     const [newExpense] = await db
       .insert(expense)
       .values({
@@ -58,7 +64,7 @@ export async function POST(
         note,
         splitType,
         version: 1,
-        createdBy: payerId,
+        createdBy: user.userId,
       })
       .returning();
 
@@ -85,3 +91,4 @@ export async function POST(
     return NextResponse.json({ error: error.message || "Failed to record expense" }, { status: 500 });
   }
 }
+

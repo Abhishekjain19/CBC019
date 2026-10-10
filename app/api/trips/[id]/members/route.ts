@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { tripMember } from "@/db/schema";
 import { resolveTripRecord } from "@/lib/trips-db";
+import { getSessionUser } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 
 export async function POST(
@@ -9,17 +10,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const body = await req.json();
     const { userId, role = "member" } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
-    }
-
-    const tripRecord = await resolveTripRecord(tripId);
-    if (!tripRecord) {
-      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
     }
 
     const [member] = await db
@@ -43,17 +49,22 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
 
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
-    }
-
-    const tripRecord = await resolveTripRecord(tripId);
-    if (!tripRecord) {
-      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
     }
 
     await db
@@ -65,3 +76,4 @@ export async function DELETE(
     return NextResponse.json({ error: error.message || "Failed to remove member" }, { status: 500 });
   }
 }
+

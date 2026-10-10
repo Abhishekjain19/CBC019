@@ -1,42 +1,43 @@
 import { db } from "@/db";
-import { trip } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { trip, tripMember } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export async function resolveTripRecord(idOrSlug: string) {
+export async function resolveTripRecord(idOrSlug: string, userId?: string) {
   if (!idOrSlug) return null;
+
+  let foundTrip: any = null;
 
   // 1. Direct ID match
   try {
     const directMatches = await db.select().from(trip).where(eq(trip.id, idOrSlug as any));
-    if (directMatches.length > 0) return directMatches[0];
+    if (directMatches.length > 0) foundTrip = directMatches[0];
   } catch {}
 
   // 2. Join code match
-  try {
-    const codeMatches = await db.select().from(trip).where(eq(trip.joinCode, idOrSlug.toUpperCase()));
-    if (codeMatches.length > 0) return codeMatches[0];
-  } catch {}
+  if (!foundTrip) {
+    try {
+      const codeMatches = await db.select().from(trip).where(eq(trip.joinCode, idOrSlug.toUpperCase()));
+      if (codeMatches.length > 0) foundTrip = codeMatches[0];
+    } catch {}
+  }
 
-  // 3. Fallback for demo slugs (e.g. demo_goa, demo-goa, demo-coorg)
-  const isGoa = idOrSlug.toLowerCase().includes("goa");
-  const isCoorg = idOrSlug.toLowerCase().includes("coorg");
-  const dest = isGoa ? "Goa" : isCoorg ? "Coorg" : "Hampi";
+  if (!foundTrip) return null;
 
-  try {
-    const destTrips = await db
+  // If userId is provided, verify ownership or membership
+  if (userId) {
+    if (foundTrip.ownerId === userId) return foundTrip;
+
+    const memberMatch = await db
       .select()
-      .from(trip)
-      .where(eq(trip.destination, dest))
-      .orderBy(desc(trip.createdAt));
+      .from(tripMember)
+      .where(and(eq(tripMember.tripId, foundTrip.id), eq(tripMember.userId, userId)));
 
-    if (destTrips.length > 0) return destTrips[0];
-  } catch {}
+    if (memberMatch.length > 0) return foundTrip;
 
-  // 4. Any trip fallback
-  try {
-    const anyTrips = await db.select().from(trip).limit(1);
-    if (anyTrips.length > 0) return anyTrips[0];
-  } catch {}
+    // User is neither owner nor member
+    return null;
+  }
 
-  return null;
+  return foundTrip;
 }
+

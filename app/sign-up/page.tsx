@@ -8,6 +8,42 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function SignUpPage() {
   const [focused, setFocused] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!displayName || !email || !password) {
+      setErrorMsg("Please fill in all required fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg("Password must be at least 6 characters long.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, displayName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.error || "Failed to create account.");
+      } else {
+        window.location.href = "/onboarding";
+      }
+    } catch {
+      setErrorMsg("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh] bg-[var(--background)] text-[var(--foreground)] flex overflow-hidden selection:bg-[var(--gold)]/30 transition-colors duration-200">
@@ -26,7 +62,13 @@ export default function SignUpPage() {
           </div>
 
           {/* Form */}
-          <form className="space-y-5 page-enter stagger-2" onSubmit={(e) => { e.preventDefault(); window.location.href = "/onboarding"; }}>
+          {errorMsg && (
+            <div className="mb-4 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold animate-[fadeIn_0.2s_ease]">
+              {errorMsg}
+            </div>
+          )}
+
+          <form className="space-y-5 page-enter stagger-2" onSubmit={handleSignUp}>
             {/* Full Name */}
             <div className="space-y-1.5">
               <label htmlFor="sign-up-name" className="block text-[11px] font-semibold uppercase tracking-widest text-[var(--foreground)]/50">
@@ -35,6 +77,9 @@ export default function SignUpPage() {
               <input
                 id="sign-up-name"
                 type="text"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
                 autoComplete="name"
                 placeholder="Arjun Verma"
                 onFocus={() => setFocused("name")}
@@ -51,6 +96,9 @@ export default function SignUpPage() {
               <input
                 id="sign-up-email"
                 type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
                 placeholder="you@example.com"
                 onFocus={() => setFocused("email")}
@@ -67,8 +115,11 @@ export default function SignUpPage() {
               <input
                 id="sign-up-password"
                 type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                placeholder="Min. 8 characters"
+                placeholder="Min. 6 characters"
                 onFocus={() => setFocused("password")}
                 onBlur={() => setFocused(null)}
                 className="field-input w-full rounded-xl px-4 py-3 text-sm text-[var(--foreground)] placeholder-[var(--foreground)]/30 bg-[var(--card)] shadow-[var(--shadow-card)] focus:border-[var(--gold)]"
@@ -79,10 +130,22 @@ export default function SignUpPage() {
             <button
               id="sign-up-submit"
               type="submit"
-              className="btn-press w-full bg-[var(--gold)] text-black py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-[var(--gold)]/20 hover:brightness-105 mt-2 flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className={`btn-press w-full bg-[var(--gold)] text-black py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-[var(--gold)]/20 hover:brightness-105 mt-2 flex items-center justify-center gap-2 ${
+                isSubmitting ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             >
-              <span>Get Started</span>
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              {isSubmitting ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>Get Started</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+                </>
+              )}
             </button>
           </form>
 

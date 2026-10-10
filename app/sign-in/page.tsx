@@ -8,6 +8,39 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function SignInPage() {
   const [focused, setFocused] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setErrorMsg("Please enter both email and password.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.error || "Failed to sign in. Please check your credentials.");
+      } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirect = urlParams.get("redirect") || "/dashboard";
+        window.location.href = redirect;
+      }
+    } catch {
+      setErrorMsg("Network error. Please check your connection.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh] bg-[var(--background)] text-[var(--foreground)] flex overflow-hidden selection:bg-[var(--gold)]/30 transition-colors duration-200">
@@ -76,7 +109,13 @@ export default function SignInPage() {
           </div>
 
           {/* Form */}
-          <form className="space-y-5 page-enter stagger-2" onSubmit={(e) => { e.preventDefault(); window.location.href = "/dashboard"; }}>
+          {errorMsg && (
+            <div className="mb-4 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold animate-[fadeIn_0.2s_ease]">
+              {errorMsg}
+            </div>
+          )}
+
+          <form className="space-y-5 page-enter stagger-2" onSubmit={handleSignIn}>
             {/* Email */}
             <div className="space-y-1.5">
               <label htmlFor="sign-in-email" className="block text-[11px] font-semibold uppercase tracking-widest text-[var(--foreground)]/50">
@@ -85,6 +124,9 @@ export default function SignInPage() {
               <input
                 id="sign-in-email"
                 type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
                 placeholder="you@example.com"
                 onFocus={() => setFocused("email")}
@@ -106,6 +148,9 @@ export default function SignInPage() {
               <input
                 id="sign-in-password"
                 type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 placeholder="••••••••"
                 onFocus={() => setFocused("password")}
@@ -118,10 +163,22 @@ export default function SignInPage() {
             <button
               id="sign-in-submit"
               type="submit"
-              className="btn-press w-full bg-[var(--gold)] text-black py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-[var(--gold)]/20 hover:brightness-105 mt-2 flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className={`btn-press w-full bg-[var(--gold)] text-black py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-[var(--gold)]/20 hover:brightness-105 mt-2 flex items-center justify-center gap-2 ${
+                isSubmitting ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             >
-              <span>Sign In</span>
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              {isSubmitting ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+                </>
+              )}
             </button>
           </form>
 

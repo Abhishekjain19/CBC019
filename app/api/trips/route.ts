@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trip, tripMember, itinerary, stop, expense, place } from "@/db/schema";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, or, inArray } from "drizzle-orm";
+import { getSessionUser } from "@/lib/auth";
 import crypto from "crypto";
 
 function generateJoinCode(): string {
@@ -21,9 +22,37 @@ const DESTINATION_IMAGES: Record<string, string> = {
   Default: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=600&q=80",
 };
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const allTrips = await db.select().from(trip).orderBy(desc(trip.createdAt));
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Find member trip IDs for this user
+    const memberRecords = await db
+      .select({ tripId: tripMember.tripId })
+      .from(tripMember)
+      .where(eq(tripMember.userId, user.userId));
+
+    const memberTripIds = memberRecords.map((m) => m.tripId);
+
+    // Fetch user owned or member trips
+    let userTrips: any[] = [];
+    if (memberTripIds.length > 0) {
+      userTrips = await db
+        .select()
+        .from(trip)
+        .where(or(eq(trip.ownerId, user.userId), inArray(trip.id, memberTripIds)))
+        .orderBy(desc(trip.createdAt));
+    } else {
+      userTrips = await db
+        .select()
+        .from(trip)
+        .where(eq(trip.ownerId, user.userId))
+        .orderBy(desc(trip.createdAt));
+    }
+
     const allMembers = await db.select().from(tripMember);
     const allItins = await db.select().from(itinerary);
     const allStops = await db.select().from(stop);
@@ -31,11 +60,10 @@ export async function GET() {
     const allPlaces = await db.select().from(place);
 
     // Map counts per trip
-    const tripsWithStats = allTrips.map((t) => {
+    const tripsWithStats = userTrips.map((t) => {
       const membersForTrip = allMembers.filter((m) => m.tripId === t.id && !m.removedAt);
       const itin = allItins.find((i) => i.tripId === t.id);
       const stopsForTrip = itin ? allStops.filter((s) => s.itineraryId === itin.id) : [];
-      const expensesForTrip = allExpenses.filter((e) => e.tripId === t.id);
 
       // Compute days count
       let daysCount = 3;
@@ -58,7 +86,7 @@ export async function GET() {
         dates: `${t.startDate} – ${t.endDate}`,
         type: t.type === "group" ? "Friends Group" : t.type === "family" ? "Family Retreat" : "Solo Expedition",
         members: Math.max(membersForTrip.length, t.peopleCount || 1),
-        status: t.status as "planning" | "confirmed",
+        status: t.status as "planning" | "confirmed" | "live" | "completed",
         image: destImage,
         budget: `₹${((t.budgetPaise || 0) / 100).toLocaleString("en-IN")}`,
         budgetPaise: t.budgetPaise || 0,
@@ -69,27 +97,30 @@ export async function GET() {
       };
     });
 
-    // Compute metrics
-    const totalBudgetPaise = allTrips.reduce((acc, t) => acc + (t.budgetPaise || 0), 0);
-    const uniqueTravellers = new Set(allMembers.map((m) => m.userId)).size;
+    // Compute metrics specifically for user's trips
+    const totalBudgetPaise = userTrips.reduce((acc, t) => acc + (t.budgetPaise || 0), 0);
+    const userTripIds = new Set(userTrips.map((t) => t.id));
+    const userTripMembers = allMembers.filter((m) => userTripIds.has(m.tripId));
+    const uniqueTravellers = new Set(userTripMembers.map((m) => m.userId)).size;
+    const totalStopsCount = tripsWithStats.reduce((acc, t) => acc + t.stopsCount, 0);
 
     const metrics = [
       {
         label: "Active Trips",
-        value: String(allTrips.length),
-        sub: "ongoing",
+        value: String(userTrips.length),
+        sub: "user trips",
         icon: "TrendingUp",
       },
       {
         label: "Travellers",
-        value: String(Math.max(uniqueTravellers, allTrips.reduce((acc, t) => acc + (t.peopleCount || 1), 0))),
+        value: String(Math.max(uniqueTravellers, userTrips.reduce((acc, t) => acc + (t.peopleCount || 1), 0))),
         sub: "members",
         icon: "Users",
       },
       {
         label: "Curated Stops",
-        value: String(allPlaces.length > 0 ? allPlaces.length : allStops.length),
-        sub: "verified",
+        value: String(totalStopsCount),
+        sub: "planned",
         icon: "Compass",
       },
       {
@@ -103,6 +134,11 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      user: {
+        userId: user.userId,
+        email: user.email,
+        displayName: user.displayName,
+      },
       trips: tripsWithStats,
       metrics,
     });
@@ -113,6 +149,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       name,
@@ -125,7 +166,6 @@ export async function POST(req: Request) {
       dailyEnd = "21:00",
       transportMode = "driving",
       budgetPaise = 0,
-      ownerId = "demo-user",
     } = body;
 
     if (!destination || !startDate || !endDate) {
@@ -140,7 +180,7 @@ export async function POST(req: Request) {
     const [newTrip] = await db
       .insert(trip)
       .values({
-        ownerId,
+        ownerId: user.userId,
         type,
         peopleCount: Number(peopleCount) || 1,
         destination,
@@ -159,7 +199,7 @@ export async function POST(req: Request) {
     // Register creator as owner member
     await db.insert(tripMember).values({
       tripId: newTrip.id,
-      userId: ownerId,
+      userId: user.userId,
       role: "owner",
     });
 
@@ -175,3 +215,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Failed to create trip" }, { status: 500 });
   }
 }
+

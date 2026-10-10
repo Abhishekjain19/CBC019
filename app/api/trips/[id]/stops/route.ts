@@ -2,14 +2,25 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { itinerary, stop, place } from "@/db/schema";
 import { resolveTripRecord } from "@/lib/trips-db";
-import { eq, and } from "drizzle-orm";
+import { getSessionUser } from "@/lib/auth";
+import { eq } from "drizzle-orm";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const body = await req.json();
     const {
       placeId,
@@ -22,11 +33,6 @@ export async function POST(
       estCostPaise = 0,
       notes = "",
     } = body;
-
-    const tripRecord = await resolveTripRecord(tripId);
-    if (!tripRecord) {
-      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
-    }
 
     // 1. Get or create itinerary for this trip
     let itins = await db.select().from(itinerary).where(eq(itinerary.tripId, tripRecord.id));
@@ -102,7 +108,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const body = await req.json();
     const {
       stopId,
@@ -143,7 +159,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id: tripId } = await params;
+    const tripRecord = await resolveTripRecord(tripId, user.userId);
+    if (!tripRecord) {
+      return NextResponse.json({ error: "Trip not found or unauthorized access" }, { status: 404 });
+    }
+
     const { searchParams } = new URL(req.url);
     const stopId = searchParams.get("stopId");
 
@@ -157,3 +183,4 @@ export async function DELETE(
     return NextResponse.json({ error: error.message || "Failed to delete stop" }, { status: 500 });
   }
 }
+

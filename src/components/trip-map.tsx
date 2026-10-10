@@ -102,6 +102,8 @@ export interface TripMapProps {
   members?: TripMemberMapInfo[];
   subItineraryTitle?: string;
   onClearSubItinerary?: () => void;
+  /** User's pre-obtained GPS coordinates [lng, lat] — used to seed live nav start position */
+  userInitialCoords?: [number, number];
 }
 
 export default function TripMap({
@@ -113,6 +115,7 @@ export default function TripMap({
   members = [],
   subItineraryTitle,
   onClearSubItinerary,
+  userInitialCoords,
 }: TripMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -572,6 +575,13 @@ export default function TripMap({
   }, [places.length, members.length, mapLoaded, navMode, activePoiCategory, JSON.stringify(validCoords)]);
 
   // 3. GEOLOCATION WATCH POSITION WHEN LIVE NAV IS ACTIVE
+  // Seed initial coords from prop if available (avoids waiting for first watchPosition event)
+  useEffect(() => {
+    if (isLiveNav && userInitialCoords && !userCoords) {
+      setUserCoords(userInitialCoords);
+    }
+  }, [isLiveNav, userInitialCoords]);
+
   useEffect(() => {
     if (!isLiveNav) {
       if (watchIdRef.current !== null) {
@@ -587,10 +597,60 @@ export default function TripMap({
 
     if (!navigator.geolocation) {
       setGeoError("Geolocation is not supported by your browser.");
+      // If we have initial coords from prop, still place the user marker
+      if (userInitialCoords) {
+        const currentPos = userInitialCoords;
+        setUserCoords(currentPos);
+        const map = mapRef.current;
+        if (map && mapLoaded && !userMarkerRef.current) {
+          const userEl = document.createElement("div");
+          userEl.id = "user-nav-arrow-wrapper";
+          userEl.className = "relative flex items-center justify-center cursor-pointer";
+          const nextTarget = validCoords[0] || currentPos;
+          const heading = calculateBearing(currentPos[0], currentPos[1], nextTarget[0], nextTarget[1]);
+          userEl.innerHTML = `
+            <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
+            <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
+                <polygon points="12,2 2,22 12,18 22,22" />
+              </svg>
+            </div>
+          `;
+          userMarkerRef.current = new maplibregl.Marker({ element: userEl })
+            .setLngLat(currentPos)
+            .addTo(map);
+          map.flyTo({ center: currentPos, zoom: 15, pitch: 45 });
+          fetchDirections([currentPos, ...validCoords], navMode);
+        }
+      }
       return;
     }
 
     setGeoError(null);
+
+    // If we already have a seeded initial position, place marker immediately
+    if (userInitialCoords && mapRef.current && mapLoaded && !userMarkerRef.current) {
+      const seedPos = userInitialCoords;
+      const map = mapRef.current;
+      const nextTarget = validCoords[0] || seedPos;
+      const heading = calculateBearing(seedPos[0], seedPos[1], nextTarget[0], nextTarget[1]);
+      const userEl = document.createElement("div");
+      userEl.id = "user-nav-arrow-wrapper";
+      userEl.className = "relative flex items-center justify-center cursor-pointer";
+      userEl.innerHTML = `
+        <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
+        <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
+          <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
+            <polygon points="12,2 2,22 12,18 22,22" />
+          </svg>
+        </div>
+      `;
+      userMarkerRef.current = new maplibregl.Marker({ element: userEl })
+        .setLngLat(seedPos)
+        .addTo(map);
+      map.flyTo({ center: seedPos, zoom: 15, pitch: 45 });
+      fetchDirections([seedPos, ...validCoords], navMode);
+    }
 
     const handlePosition = (pos: GeolocationPosition) => {
       const { latitude, longitude } = pos.coords;
@@ -628,6 +688,7 @@ export default function TripMap({
           }
         }
 
+        // Route from current GPS position to all stops
         const routeCoords = [currentPos, ...validCoords];
         fetchDirections(routeCoords, navMode);
       }
@@ -636,7 +697,31 @@ export default function TripMap({
 
     const handleError = (err: GeolocationPositionError) => {
       console.warn("Geolocation error:", err.message);
-      setGeoError("Could not lock GPS position. Using route sequence.");
+      setGeoError("Could not lock GPS position. Using route from nearest stop.");
+      // Fall back to initial coords if available
+      if (userInitialCoords && mapRef.current && !userMarkerRef.current) {
+        const fallbackPos = userInitialCoords;
+        setUserCoords(fallbackPos);
+        const map = mapRef.current;
+        const nextTarget = validCoords[0] || fallbackPos;
+        const heading = calculateBearing(fallbackPos[0], fallbackPos[1], nextTarget[0], nextTarget[1]);
+        const userEl = document.createElement("div");
+        userEl.id = "user-nav-arrow-wrapper";
+        userEl.className = "relative flex items-center justify-center cursor-pointer";
+        userEl.innerHTML = `
+          <div class="absolute w-12 h-12 rounded-full bg-[var(--gold)]/30 animate-ping"></div>
+          <div class="user-arrow-cone w-10 h-10 rounded-full bg-gradient-to-tr from-black via-zinc-900 to-zinc-800 border-2 border-[var(--gold)] shadow-2xl flex items-center justify-center text-[var(--gold)]" style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 drop-shadow">
+              <polygon points="12,2 2,22 12,18 22,22" />
+            </svg>
+          </div>
+        `;
+        userMarkerRef.current = new maplibregl.Marker({ element: userEl })
+          .setLngLat(fallbackPos)
+          .addTo(map);
+        map.flyTo({ center: fallbackPos, zoom: 15, pitch: 45 });
+        fetchDirections([fallbackPos, ...validCoords], navMode);
+      }
     };
 
     watchIdRef.current = navigator.geolocation.watchPosition(handlePosition, handleError, {
